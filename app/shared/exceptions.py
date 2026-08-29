@@ -1,0 +1,34 @@
+from fastapi import HTTPException, status
+
+
+class NotFoundError(HTTPException):
+    def __init__(self, detail: str = "Not found") -> None:
+        super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
+
+
+class ForbiddenError(HTTPException):
+    def __init__(self, detail: str = "Forbidden") -> None:
+        super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+class ConflictError(HTTPException):
+    def __init__(self, detail: str = "Conflict") -> None:
+        super().__init__(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+class QuotaExceededError(HTTPException):
+    def __init__(self, detail: str = "Daily upload quota exceeded") -> None:
+        super().__init__(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=detail)
+
+
+class FileTooLargeError(HTTPException):
+    def __init__(self, detail: str = "File exceeds maximum allowed size") -> None:
+        super().__init__(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=detail)
+
+
+class FeatureNotAvailableError(HTTPException):
+    def __init__(self, feature: str) -> None:
+        super().__init__(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Feature '{feature}' requires an active subscription",
+        )
