@@ -6,6 +6,21 @@ class NotFoundError(HTTPException):
         super().__init__(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
 
+class UnauthorizedError(HTTPException):
+    """Authentication failed or was not supplied.
+
+    Distinct from ForbiddenError: 401 means "we do not know who you are",
+    403 means "we know, and you may not do this".
+    """
+
+    def __init__(self, detail: str = "Not authenticated") -> None:
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=detail,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 class ForbiddenError(HTTPException):
     def __init__(self, detail: str = "Forbidden") -> None:
         super().__init__(status_code=status.HTTP_403_FORBIDDEN, detail=detail)

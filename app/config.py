@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # Encryption
     encryption_key: str
 
+    # Audit storage strategy. See app/shared/audit/sinks/.
+    #   per_table     one shadow table per audited table, typed columns (default)
+    #   single_table  one shared audit_logs table, JSON values
+    #   none          auditing disabled
+    audit_sink: str = "per_table"
+
     # Business rules (PRD §9 — all configurable)
     max_upload_size_bytes: int = 20 * 1024 * 1024  # 20 MB
     daily_upload_cap: int = 10

@@ -1,71 +1,112 @@
 # Group Rules — Implementation Detail
 
+**Status:** built, except the share-grant revocation on group delete (blocked on `document_management`).
+
 ## Group Lifecycle
 
 ```
 create → [active] → delete
-                ↑
-           transfer admin
+              ↑
+        transfer admin
 ```
 
-A group has no "archived" or "suspended" state in MVP.
+No archived or suspended state in MVP.
+
+## The Admin Invariant
+
+**Every group has exactly one admin at all times.** Three paths could break this; each is guarded:
+
+| Path | Guard |
+|---|---|
+| Admin removes themselves | `409` — "transfer admin rights first, or delete the group" |
+| Sole admin leaves while others remain | `409` — "transfer admin rights before leaving" |
+| Admin transfer | Promotion and demotion in **one transaction**, so the group is never left with two admins or none |
+
+The group creator is inserted as `role="admin"` in the same transaction as the `Group` row.
+
+The last remaining member *can* leave — the group is deleted with them, since an empty group is unreachable by anyone.
 
 ## Member Cap
 
-- Default: 20 members (`settings.group_member_cap`), inclusive of the admin.
-- Enforced at **invite time**: if `current_member_count >= cap`, raise `ConflictError("Group is at capacity")`.
-- Check: `SELECT COUNT(*) FROM memberships WHERE group_id = ?` before inserting the invitation.
+Default 20 (`settings.group_member_cap`), **inclusive of the admin**.
 
-## Invitation Lifecycle
+> Resolves PRD §10's open question. Handoff screen 18 shows "Sharma Family · 5 of 20 members" listing Mudit (admin) plus four members — so the admin counts.
+
+Enforced in **two** places, deliberately:
+
+1. **At invite time** — the primary check. Prevents over-subscribing a group with outstanding invitations.
+2. **At accept time** — a re-check. An invitation issued while there was room may be accepted after the group has since filled up.
+
+Checking only at accept would let an admin issue 50 invitations to a 20-seat group; checking only at invite would let all outstanding invitations land at once.
+
+## Invitations
 
 ```
-[pending] → accepted → (Membership row created)
-          → declined → (row kept, status = "declined")
+            invite
+              ↓
+         [pending] ──accept──▶ [accepted] → Membership created
+              │
+              └───decline──▶ [declined] ──re-invite──▶ [pending]
 ```
 
-- Only the `invited_user_id` can accept or decline.
-- Accepting an already-accepted invitation is a no-op (idempotent).
-- A user can only have one pending invitation per group. Sending a second invite to the same user raises `ConflictError`.
+- **Existing users only.** Invite is by phone number; an unregistered number returns `404`. Inviting someone to the *platform* is future scope.
+- **Only the invitee** can accept or decline. Anyone else gets `404`, not `403` — the caller must not learn that an invitation they cannot act on exists.
+- **Accept is idempotent.** Re-accepting is a no-op, not a duplicate membership.
+- **Accept after decline** → `409`. **Decline after accept** → `409`.
+- **Re-inviting after a decline** reopens the same row rather than inserting a second one — the unique constraint on `(group_id, invited_user_id)` forbids a duplicate anyway.
+- A pending invitation to someone already a member → `409`.
 
-## Admin Invariant
+Pending invitations for the caller drive the Groups tab badge (handoff §3.4).
 
-- Every group must have **exactly one** admin at all times.
-- Admin transfer (`PATCH /groups/{id}/members/{uid}/role`):
-  1. Verify caller is current admin.
-  2. Set caller's `Membership.role = "member"`.
-  3. Set target's `Membership.role = "admin"`.
-  4. Both updates in one transaction.
-- The creator of a group is automatically the admin (inserted as `role="admin"` alongside the `Group` row).
+## Visibility — 404 over 403
+
+Non-members get **404** on every group route, never 403. A 403 confirms the group exists; for a vault product that is a disclosure. `_require_membership` raises `NotFoundError("Group not found")` for both "no such group" and "not your group".
+
+403 is reserved for the case where the caller *is* a member but lacks the role — an ordinary member attempting an admin action. There, existence is already known.
+
+## Permissions
+
+| Action | Admin | Member |
+|---|---|---|
+| View group, list members | ✅ | ✅ |
+| Create group | — | anyone |
+| Rename / edit description | ✅ | ❌ 403 |
+| Invite | ✅ | ❌ 403 |
+| Remove a member | ✅ | ❌ 403 |
+| Transfer admin | ✅ | ❌ 403 |
+| Delete group | ✅ | ❌ 403 |
+| Leave | ✅ (after transfer) | ✅ |
 
 ## Removing a Member
 
-- Only the group admin can remove members.
-- Admin cannot remove themselves — they must transfer admin first.
-- Removing a member does NOT revoke documents they have already downloaded (out of scope for v1, per engineering handoff §4).
-- Removing a member DOES immediately revoke their active share grants — this is handled in `document_management.services.share_service.revoke_for_member_removal(group_id, user_id)`.
+Admin only, and the admin **cannot remove themselves**.
 
-## Leaving a Group
+Removal does not revoke documents the member already downloaded — out of scope for v1 (handoff §5, open question Q5).
 
-- Any member (including admin) can call `DELETE /groups/{id}/members/me`.
-- If the leaving user is the only admin and there are other members → raise `ConflictError("Transfer admin before leaving")`.
-- If the leaving user is the last member → delete the group.
+Once `document_management` exists, removal needs no share-grant change: access resolves through the `Membership` join at query time, so deleting the membership row removes access immediately.
 
 ## Deleting a Group
 
-- Only the group admin can delete.
-- Steps (all in one transaction):
-  1. Revoke all `ShareGrant` rows where `group_id = ?` — call `share_service.revoke_all_for_group(group_id, db)`.
-  2. Emit an `AccessLog` `revoke` event for each document that had active grants.
-  3. Delete all `Membership` rows for the group.
-  4. Delete all `Invitation` rows for the group.
-  5. Delete the `Group` row.
-- Documents themselves are **never deleted** — they return to the owner's vault silently.
+Admin only. Memberships and invitations cascade via their FKs.
 
-## Cascade Rules Summary
+> ⚠️ **Incomplete.** Deleting a group must also revoke every `ShareGrant` pointing at it, and must **never** delete the underlying documents (handoff §2). `ShareService` does not exist yet, so `GroupService.delete()` carries the call site as a comment:
+>
+> ```python
+> from app.document_management.services.share_service import ShareService
+> await ShareService(self.db).revoke_all_for_group(group_id)
+> ```
+>
+> The import is function-local by design, to avoid a circular import at module load. Tracked as backend item #9.
 
-| Action | ShareGrants | Documents | Memberships | Invitations |
+## Cascade Summary
+
+| Action | Memberships | Invitations | ShareGrants | Documents |
 |---|---|---|---|---|
-| Group deleted | Revoked (set `revoked_at`) | Untouched | Deleted | Deleted |
-| Member removed | No change to other members' grants | Untouched | Deleted | n/a |
-| Member leaves | No change to other members' grants | Untouched | Deleted | n/a |
-| Document soft-deleted | All grants for doc become inaccessible | `deleted_at` set | Untouched | Untouched |
+| Group deleted | Deleted (FK cascade) | Deleted (FK cascade) | ⬜ must be revoked | **Never deleted** |
+| Member removed | That row deleted | Untouched | Untouched — access resolves via the join | Untouched |
+| Member leaves | That row deleted | Untouched | Untouched | Untouched |
+| Last member leaves | Deleted with the group | Deleted with the group | ⬜ must be revoked | **Never deleted** |
+
+## Audit
+
+Every group action is captured automatically — `groups`, `memberships` and `invitations` all declare `__audited__ = True`. An admin transfer produces **two** `memberships` UPDATE rows, one per side of the swap, each with its before/after role. See `shared/docs/audit_framework.md`.

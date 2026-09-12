@@ -55,6 +55,13 @@ cover/
 *.mo
 *.pot
 
+# Local dev databases — these hold real account data (phone numbers, password
+# hashes, the audit trail). Never commit one.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
 # Django stuff:
 *.log
 local_settings.py

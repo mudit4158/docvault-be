@@ -9,16 +9,9 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.config import settings
 from app.shared.db.base import Base
 
-# Import every model module so Alembic's autogenerate sees all tables.
-# Add new model files here as they are created.
-import app.user_management.models.account  # noqa: F401
-import app.user_management.models.quota  # noqa: F401
-import app.user_management.models.group  # noqa: F401
-import app.document_management.models.document  # noqa: F401
-import app.document_management.models.tag  # noqa: F401
-import app.document_management.models.share_grant  # noqa: F401
-import app.document_management.models.access_log  # noqa: F401
-import app.billing.models.subscription  # noqa: F401
+# Registers every model AND the generated audit tables, in that order.
+# Add new models to app/registry.py, not here.
+import app.registry  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

@@ -1,7 +1,14 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.db.base import Base
@@ -22,17 +29,19 @@ class Subscription(Base):
     """One row per (account, feature_key).
 
     There is deliberately NO is_active column — active is computed at read time
-    as `expires_at > now()`. A job that flips a stored flag lags real expiry in
-    both directions. See docs/subscription_model.md.
+    as `expires_at > now()`. A job that maintains a stored flag lags real expiry
+    in both directions: users keep a feature they stopped paying for, or lose
+    one they paid for.
 
-    `cancelled_at` stops auto-renewal but does NOT shorten expires_at: a
-    cancelled subscription stays usable until the paid period ends (PRD §8.4).
+    `cancelled_at` stops auto-renewal but does NOT shorten `expires_at`: a
+    cancelled subscription stays usable to the end of the paid period (PRD §8.4).
 
-    `credit_balance` is independent of expires_at — unused credits never expire
-    with the subscription (PRD §8.4). Nothing in the codebase zeroes it.
+    `credit_balance` is independent of `expires_at` — unused credits never
+    expire with the subscription (PRD §8.4). Nothing in the codebase zeroes it.
     """
 
     __tablename__ = "subscriptions"
+    __audited__ = True
 
     __table_args__ = (
         UniqueConstraint("account_id", "feature_key", name="uq_subscription_account_feature"),
@@ -51,28 +60,4 @@ class Subscription(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column()
 
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
-
-
-class PlanLimit(Base):
-    """Per-account overrides of the configurable parameters (PRD §8.3, §9).
-
-    Every column is NULLABLE. NULL means "fall back to the global default in
-    settings" — so raising a global default automatically applies to every
-    account that has not been individually raised.
-
-    NOTE the daily upload cap is NOT here. It is written directly into
-    UploadQuota.cap_files so the upload hot path stays a single locked row read.
-    See docs/limits_and_gating.md.
-    """
-
-    __tablename__ = "plan_limits"
-
-    account_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
-    )
-    max_upload_size_bytes: Mapped[int | None] = mapped_column(BigInteger)
-    group_member_cap: Mapped[int | None] = mapped_column(Integer)
-    soft_delete_retention_days: Mapped[int | None] = mapped_column(Integer)
-
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
