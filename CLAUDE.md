@@ -6,15 +6,18 @@ Secure personal document vault. Users upload, organise, and share documents with
 
 ## Current State — Read This First
 
-**This is a scaffold. Almost nothing is built.** Each module has exactly one sample flow wired end-to-end as a reference pattern:
-
-| Module | Sample flow |
+| Module | State |
 |---|---|
-| `user_management` | `POST /api/v1/auth/login` |
-| `document_management` | `GET /api/v1/documents` |
-| `billing` | `GET /api/v1/billing/subscriptions` |
+| `shared` | ✅ DB, auth, storage interface, exceptions, pagination, **audit framework** |
+| `user_management` | ✅ **Complete** — register, login, groups, invitations, members, admin transfer |
+| `document_management` | ✅ Upload, list/search, detail, rename, type, tags, trash/restore, sharing, download, access log. ⬜ GCS, thumbnails, compression, CSV export, preview |
+| `billing` | ⬜ Scaffold — one sample flow (`GET /billing/subscriptions`) |
 
-Everything else is **specified but not implemented**. Before building a feature, find its spec — the module's `CLAUDE.md` has an implementation-status table pointing at the `docs/*.md` that describes it. The specs encode decisions already made; do not re-derive them.
+**210 tests passing.** Files are stored encrypted on local disk (`LOCAL_STORAGE_PATH`, gitignored `uploads/`) until the GCS backend is built.
+
+Everything not marked ✅ is **specified but not implemented**. Before building, find the spec — each module's `CLAUDE.md` has a status table pointing at the `docs/*.md` describing it. The specs encode decisions already made; do not re-derive them.
+
+⚠️ **No baseline Alembic migration is committed.** Generate it against Postgres before running against a real database.
 
 ## Documentation Convention
 
@@ -33,7 +36,7 @@ Two tiers, deliberately:
 |---|---|
 | [`app/shared/`](app/shared/CLAUDE.md) | DB session, JWT auth, storage interface, exceptions, pagination |
 | [`app/user_management/`](app/user_management/CLAUDE.md) | Accounts, auth, quotas, groups, memberships, invitations |
-| [`app/document_management/`](app/document_management/CLAUDE.md) | Documents, tags, share grants, access logs, download, scan save |
+| [`app/document_management/`](app/document_management/CLAUDE.md) | Documents, tags, share grants, access logs, download |
 | [`app/billing/`](app/billing/CLAUDE.md) | Subscriptions, credits, feature gating, limit overrides |
 
 ### Dependency Direction
@@ -92,6 +95,16 @@ Defined in `app/config.py` as `Settings`, loaded from env. All four are raisable
 
 Never read these directly from `settings` on a request path — resolve the per-account effective value.
 
+## Authentication & Audit
+
+**Every route is authenticated except `POST /auth/register` and `POST /auth/login`.** Add `account_id: uuid.UUID = Depends(get_current_account_id)` to anything new.
+
+Credentials live on `AuthIdentity`, never on `Account` — that split is what makes OTP and SSO additive. See `app/user_management/docs/auth_flow.md`.
+
+**Audit is automatic.** A model declaring `__audited__ = True` has every INSERT/UPDATE/DELETE recorded, attributed to the caller that the auth dependency stamped into a ContextVar. Services never call the audit layer — do not add manual audit calls. Secrets (`secret_hash`, `password_hash`, `pin_hash`, `token_hash`) are never written. See `app/shared/docs/audit_framework.md`.
+
+`AuditLog` ≠ `AccessLog`. The first is infrastructure across all tables; the second is the per-document product feature of PRD §4.8.
+
 ## Conventions
 
 - **Thin routers, fat services.** Routers resolve dependencies and delegate. All logic in `ServiceClass(db).method()`.
@@ -121,4 +134,11 @@ pytest
 
 ## Product Reference
 
-Behaviour comes from the PRD (v1.3) and the engineering handoff doc. The `docs/*.md` files cite them by section — "PRD §4.3", "engineering handoff §3.2" — so any rule traces back to its source. When a spec and your intuition disagree, the spec wins; if the spec is silent, check its "Open Questions" section before inventing an answer.
+Behaviour comes from the PRD (v1.3) and the engineering handoff doc, both in `../docs/product/`. The `docs/*.md` files cite them by section — "PRD §4.3", "engineering handoff §3.2" — so any rule traces back to its source. When a spec and your intuition disagree, the spec wins; if the spec is silent, check its "Open Questions" section before inventing an answer.
+
+Cross-repo documentation lives in `../docs/` — start at `../docs/README.md`:
+
+- `../docs/TRACKER.md` — done vs. pending across backend and Android, plus the open questions and decisions log
+- `../docs/hld/` — system architecture, backend module design, data model
+
+**When you finish a feature, flip its row in the module's status table here *and* in `../docs/TRACKER.md`.** They must not drift.

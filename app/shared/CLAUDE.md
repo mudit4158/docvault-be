@@ -13,8 +13,28 @@
 | `auth/jwt.py` | `create_access_token(subject)`, `decode_token(token)` |
 | `auth/dependencies.py` | `get_current_account_id` — FastAPI `Depends` that validates the bearer token and returns a `uuid.UUID` |
 | `storage/interface.py` | `StorageBackend` abstract class + `get_storage()` factory; concrete impls: `LocalStorage`, `S3Storage` |
-| `exceptions.py` | Typed `HTTPException` subclasses: `NotFoundError`, `ForbiddenError`, `ConflictError`, `QuotaExceededError`, `FileTooLargeError` |
+| `exceptions.py` | Typed `HTTPException` subclasses: `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `QuotaExceededError`, `FileTooLargeError` |
 | `pagination.py` | `PageParams`, `PagedResponse[T]` |
+| `audit/` | Automatic, table-agnostic audit trail — see below |
+
+## Audit Framework
+
+The one place `shared` owns a **model**. Deep dive: [`docs/audit_framework.md`](docs/audit_framework.md).
+
+Opt a model in with one line; services never call the audit layer:
+
+```python
+class Group(Base):
+    __audited__ = True
+```
+
+Every INSERT/UPDATE/DELETE is then captured by SQLAlchemy session listeners, attributed to the actor that `get_current_account_id` stamped into a ContextVar.
+
+`secret_hash`, `password_hash`, `pin_hash` and `token_hash` are **never** written to the trail.
+
+Do not confuse `AuditLog` with `AccessLog` in `document_management`: this is infrastructure covering every table; that is a product feature (PRD §4.8) scoped to one document and read by its owner.
+
+> This places a model in `shared`, amending HLD 02's "shared holds no business logic". An audit framework is infrastructure and every module writes to it — putting it in any one module would invert the dependency direction for the others.
 
 ## Using `get_current_account_id`
 

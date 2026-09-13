@@ -15,6 +15,7 @@ class UploadQuota(Base):
     """
 
     __tablename__ = "upload_quotas"
+    __audited__ = True
 
     account_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True

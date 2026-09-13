@@ -11,27 +11,38 @@ from collections.abc import AsyncGenerator
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
-# Importing every model module registers its tables on Base.metadata.
-# These must come before the `fastapi_app` import below, and must use the
-# `import x.y as z` form — a bare `import app.billing.models.subscription`
-# binds the name `app` to the PACKAGE, shadowing the FastAPI instance.
-import app.billing.models.subscription as _m_subscription  # noqa: F401
-import app.document_management.models.access_log as _m_access_log  # noqa: F401
-import app.document_management.models.document as _m_document  # noqa: F401
-import app.document_management.models.share_grant as _m_share_grant  # noqa: F401
-import app.document_management.models.tag as _m_tag  # noqa: F401
-import app.user_management.models.account as _m_account  # noqa: F401
-import app.user_management.models.group as _m_group  # noqa: F401
-import app.user_management.models.quota as _m_quota  # noqa: F401
+# Registers every model AND the generated audit tables, so create_all builds
+# the complete schema. Aliased import: a bare `import app.registry` would bind
+# the name `app` to the PACKAGE, shadowing the FastAPI instance below.
+import app.registry as _registry  # noqa: F401
+import app.shared.audit as _audit  # noqa: F401  (registers the session listeners)
 from app.main import app as fastapi_app
+from app.shared.audit.context import set_actor
 from app.shared.db.base import Base
 from app.shared.db.session import get_db
 
 
+@pytest.fixture(autouse=True)
+def _clear_audit_actor() -> None:
+    """Reset the audit actor between tests.
+
+    The ContextVar would otherwise leak one test's actor into the next, making
+    audit assertions pass or fail depending on test order.
+    """
+    set_actor(None)
+
+
 @pytest.fixture
 async def db() -> AsyncGenerator[AsyncSession, None]:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    # StaticPool keeps every connection pointed at the same in-memory database;
+    # without it each connection gets its own empty one.
+    engine = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
+    )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -48,6 +59,7 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
     async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield db
+        await db.commit()
 
     fastapi_app.dependency_overrides[get_db] = _override_get_db
     transport = ASGITransport(app=fastapi_app)

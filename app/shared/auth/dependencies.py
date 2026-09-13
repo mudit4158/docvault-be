@@ -1,29 +1,37 @@
 import uuid
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.shared.audit.context import set_actor
 from app.shared.auth.jwt import decode_token
+from app.shared.exceptions import UnauthorizedError
 
-_bearer = HTTPBearer()
+# auto_error=False so a missing header raises our own 401 with a consistent
+# body, rather than FastAPI's default shape.
+_bearer = HTTPBearer(auto_error=False)
 
 
 async def get_current_account_id(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> uuid.UUID:
-    """FastAPI dependency — validates the bearer token and returns the caller's account UUID.
+    """Validate the bearer token and return the caller's account id.
 
-    Usage in any authenticated route:
+    Also stamps the audit actor for this request, so every row the request
+    writes is attributed without any service having to pass the id down.
+
+    Add to every authenticated route:
         account_id: uuid.UUID = Depends(get_current_account_id)
 
-    Do NOT add this to auth routes (login, register).
+    Do NOT add to /auth/register or /auth/login — there is no caller yet.
     """
+    if credentials is None:
+        raise UnauthorizedError("Not authenticated")
+
     try:
-        raw = decode_token(credentials.credentials)
-        return uuid.UUID(raw)
+        account_id = uuid.UUID(decode_token(credentials.credentials))
     except (ValueError, AttributeError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise UnauthorizedError("Invalid or expired token")
+
+    set_actor(account_id)
+    return account_id

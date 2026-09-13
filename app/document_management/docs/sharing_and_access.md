@@ -97,7 +97,11 @@ CREATE UNIQUE INDEX uq_active_grant
   WHERE revoked_at IS NULL;
 ```
 
-The owner does **not** need to be a member of the group to share into it — though in practice the UI only offers groups they belong to.
+The owner **must be a member** of the group to share into it (tracker D22). A group the owner doesn't belong to returns 404 "Group not found" — the same answer as a group that doesn't exist, so group ids can't be probed. Without this, anyone holding a group id could push files at strangers.
+
+Re-sharing into a group that already has an active grant updates that grant's permission in place; the partial unique index `uq_share_grants_active` guarantees at most one active grant per (document, group).
+
+**What members see.** A member gets name, type, size, page count, owner and their own permission. Tags and the share list are **owner-only** (D23) — tags are the owner's private organisation, and the share list would reveal the owner's other groups.
 
 ## Revoking
 

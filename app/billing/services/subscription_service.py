@@ -10,7 +10,7 @@ docs/limits_and_gating.md for the FeatureGate contract that is not built yet.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +33,7 @@ class SubscriptionService:
         result = await self.db.execute(
             select(Subscription).where(
                 Subscription.account_id == account_id,
-                Subscription.expires_at > datetime.now(timezone.utc),
+                Subscription.expires_at > datetime.now(UTC),
             )
         )
         return [SubscriptionResponse.model_validate(s) for s in result.scalars().all()]

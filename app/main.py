@@ -1,15 +1,28 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import app.registry  # noqa: F401  (models + generated audit tables)
+import app.shared.audit  # noqa: F401  (registers the audit session listeners)
 from app.billing.router.subscriptions import router as billing_router
+from app.config import settings
 from app.document_management.router.documents import router as documents_router
+from app.document_management.router.group_documents import router as group_documents_router
+from app.document_management.router.tags import router as tags_router
+from app.shared.audit import configure_audit, get_sink
+from app.user_management.router.accounts import router as accounts_router
 from app.user_management.router.auth import router as auth_router
+from app.user_management.router.groups import router as groups_router
+from app.user_management.router.invitations import router as invitations_router
 
 app = FastAPI(
     title="DocVault API",
     version="0.1.0",
     description="Secure personal document vault — Android + Web backend",
 )
+
+# Audit storage strategy comes from configuration, so it is a deployment
+# choice rather than a code change.
+configure_audit(get_sink(settings.audit_sink))
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,13 +39,18 @@ app.add_middleware(
 # each new router here. All routes sit behind /api/v1 so the mobile client can
 # version independently of the web client.
 #
-# Currently registered (one sample flow per module — features land incrementally):
-#   user_management     -> auth
-#   document_management -> documents
-#   billing             -> subscriptions
+# Currently registered:
+#   user_management     -> auth, accounts, groups, invitations   (built)
+#   document_management -> documents, group documents, tags      (built)
+#   billing             -> subscriptions                          (sample flow only)
 # ---------------------------------------------------------------------------
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(accounts_router, prefix="/api/v1")
+app.include_router(groups_router, prefix="/api/v1")
+app.include_router(invitations_router, prefix="/api/v1")
 app.include_router(documents_router, prefix="/api/v1")
+app.include_router(group_documents_router, prefix="/api/v1")
+app.include_router(tags_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
 
 

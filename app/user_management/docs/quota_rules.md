@@ -92,7 +92,7 @@ Per screen 12: *"read access unaffected."* When the cap is reached, block **only
 - Group operations
 - Restoring a soft-deleted document
 
-Only `POST /documents` and the scan save endpoint return `429`.
+Only `POST /documents` returns `429`. Scanned documents upload through that same endpoint, so they are metered identically — one scan, one quota unit.
 
 ## Paid Plan Overrides
 

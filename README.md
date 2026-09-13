@@ -82,13 +82,50 @@ op.execute(
 )
 ```
 
-## Tests
+## Testing
+
+Three ways, from fastest to most hands-on.
+
+### 1. Automated suite
 
 ```bash
 pytest
 ```
 
-Tests run against in-memory SQLite with the schema built from `Base.metadata`.
+101 tests against in-memory SQLite, schema built from `Base.metadata`. No database or server needed. Covers happy paths and negative cases — wrong credentials, duplicate registration, malformed input, non-member access, role violations, cap enforcement, and the audit trail.
+
+```bash
+pytest tests/user_management -v        # just this module
+pytest -k "invitation" -v              # one area
+```
+
+### 2. Run it locally and click through
+
+No Postgres needed — SQLite is enough to exercise the API.
+
+```bash
+cp .env.example .env          # defaults already point at local SQLite
+python scripts/init_dev_db.py # create the 14 tables
+uvicorn app.main:app --reload
+```
+
+Open **http://127.0.0.1:8000/docs** for interactive Swagger UI.
+
+To call an authenticated route: run `POST /auth/register`, then `POST /auth/login`, copy the `access_token`, click **Authorize** (top right), paste it. Routes showing a padlock need this; only register and login don't.
+
+> `scripts/init_dev_db.py` creates tables straight from the models, bypassing Alembic. It is **local SQLite only** and refuses to run against anything else. For a real database use `alembic upgrade head`.
+
+### 3. End-to-end walkthrough script
+
+With the server running:
+
+```bash
+python scripts/smoke_walkthrough.py
+```
+
+Drives the whole `user_management` module over real HTTP — register three users, log in, create a group, invite, accept, list members, remove, transfer admin, leave, change password — asserting both the happy paths and the negative ones, then prints what landed in the audit trail. 41 checks. Re-runnable: each run uses fresh phone numbers.
+
+Useful as a live contract reference when building the Android client.
 
 ## Product Reference
 
