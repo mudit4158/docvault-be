@@ -13,14 +13,12 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
 
     # Storage
+    #   local  files under local_storage_path (development)
+    #   gcs    Google Cloud Storage — not built yet, tracked in docs/TRACKER.md
     storage_backend: str = "local"
     local_storage_path: str = "./uploads"
-    aws_bucket_name: str = ""
-    aws_region: str = ""
-    aws_access_key_id: str = ""
-    aws_secret_access_key: str = ""
 
-    # Encryption
+    # Encryption at rest. See app/shared/encryption.py for the expected format.
     encryption_key: str
 
     # Audit storage strategy. See app/shared/audit/sinks/.

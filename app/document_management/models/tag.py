@@ -8,15 +8,20 @@ from app.shared.db.base import Base
 
 
 class Tag(Base):
-    """A shared label catalogue — not per-user rows.
+    """A label catalogue row, shared across accounts for storage.
 
-    Seeded labels: Favourites, Identity Proof, Medical, Home.
+    Default suggestions: Favourites, Identity Proof, Medical, Home.
 
-    Tagging a document resolves-or-creates the Tag, then inserts a DocTag.
-    Removing a tag deletes only the DocTag join, never the Tag.
+    Tagging a document resolves-or-creates the Tag (case-insensitively), then
+    inserts a DocTag. Removing a tag deletes only the DocTag join, never the Tag.
+
+    Although rows are shared, a user is only ever SHOWN labels they have used
+    themselves plus the defaults — another person's labels ("Divorce papers")
+    are private information. See TagService.suggestions.
     """
 
     __tablename__ = "tags"
+    __audited__ = True
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     label: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)

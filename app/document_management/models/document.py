@@ -23,6 +23,7 @@ class Document(Base):
     """
 
     __tablename__ = "documents"
+    __audited__ = True
 
     __table_args__ = (
         # The hot path: every vault listing filters on owner + not-deleted.

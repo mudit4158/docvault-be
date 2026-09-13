@@ -71,6 +71,14 @@ ALLOWED_MIME_TYPES = {
 
 Validate the **sniffed** content type, not the client-supplied `Content-Type` header. A client can lie about the header.
 
+### Page Count
+
+For PDFs, the server reads `page_count` from the file itself. Never accept it from the request — a client-supplied count is untrusted and would drift from the real file.
+
+### Scanned Documents Use This Same Pipeline
+
+There is no separate scan endpoint. The app assembles a scanned PDF on the device and uploads it here like any other file; the server neither knows nor needs to know it was scanned. See `scan_to_pdf.md`.
+
 ### Multi-File Upload
 
 The client uploads files **one request per file**, not one request with N files. Each file gets its own progress bar and its own retry (screen 11). The server does not need a batch endpoint.

@@ -16,7 +16,8 @@ dependencies = [
     "bcrypt>=4.1.0",
     "python-multipart>=0.0.9",
     "cryptography>=42.0.0",
-    "boto3>=1.34.0",
+    # Reads PDF page counts server-side; the client's count is never trusted.
+    "pypdf>=5.0.0",
 ]
 
 [project.optional-dependencies]

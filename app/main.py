@@ -6,6 +6,8 @@ import app.shared.audit  # noqa: F401  (registers the audit session listeners)
 from app.billing.router.subscriptions import router as billing_router
 from app.config import settings
 from app.document_management.router.documents import router as documents_router
+from app.document_management.router.group_documents import router as group_documents_router
+from app.document_management.router.tags import router as tags_router
 from app.shared.audit import configure_audit, get_sink
 from app.user_management.router.accounts import router as accounts_router
 from app.user_management.router.auth import router as auth_router
@@ -38,15 +40,17 @@ app.add_middleware(
 # version independently of the web client.
 #
 # Currently registered:
-#   user_management     -> auth, groups, invitations   (built)
-#   document_management -> documents                   (sample flow only)
-#   billing             -> subscriptions                (sample flow only)
+#   user_management     -> auth, accounts, groups, invitations   (built)
+#   document_management -> documents, group documents, tags      (built)
+#   billing             -> subscriptions                          (sample flow only)
 # ---------------------------------------------------------------------------
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(accounts_router, prefix="/api/v1")
 app.include_router(groups_router, prefix="/api/v1")
 app.include_router(invitations_router, prefix="/api/v1")
 app.include_router(documents_router, prefix="/api/v1")
+app.include_router(group_documents_router, prefix="/api/v1")
+app.include_router(tags_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
 
 

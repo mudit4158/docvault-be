@@ -128,9 +128,11 @@ class AuthService:
         return AccountSummary.model_validate(account)
 
     async def get_quota(self, account_id: uuid.UUID) -> QuotaResponse:
-        quota = await self.db.get(UploadQuota, account_id)
-        if quota is None:
-            raise NotFoundError("Quota not found for this account")
+        # Through the quota service, so an expired window is rolled over before
+        # it is shown and the client never displays a reset time in the past.
+        from app.user_management.services.quota_service import UploadQuotaService
+
+        quota = await UploadQuotaService(self.db).status(account_id)
         return QuotaResponse.model_validate(quota)
 
     async def _require_account(self, account_id: uuid.UUID) -> Account:

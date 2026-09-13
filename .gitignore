@@ -154,6 +154,10 @@ activemq-data/
 # SageMath parsed files
 *.sage.py
 
+# Uploaded documents (local storage backend). Encrypted, but they are still
+# people's identity documents — never commit them.
+uploads/
+
 # Environments
 .env
 .envrc

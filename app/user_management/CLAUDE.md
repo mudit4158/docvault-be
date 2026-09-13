@@ -53,8 +53,8 @@ All six are `__audited__ = True`.
 | Invitations (invite / list / accept / decline) | ✅ Built |
 | Member list, remove, leave | ✅ Built |
 | Admin transfer | ✅ Built |
-| Group delete → revoke share grants | 🟡 Blocked on `document_management.ShareService` |
-| Quota enforcement (counter increment) | ⬜ Belongs to the upload path — item #4 |
+| Group delete / last member leaves → revoke share grants | ✅ Built — calls `ShareService.revoke_all_for_group` |
+| Quota enforcement (counter increment) | ✅ Built — `services/quota_service.py`, called by the upload path |
 | OTP login | ⬜ Future scope — phase 2 |
 | Google / Apple SSO | ⬜ Future scope — phase 3 |
 | Biometric MFA | ⬜ Future scope — phase 4 |
