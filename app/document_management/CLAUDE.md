@@ -60,7 +60,7 @@ CLAUDE.md is the map. Implementation logic lives in `docs/`:
 | Share grants — grant, update, revoke, group documents | ✅ Owner must belong to the group |
 | Access log read | ✅ |
 | Access log CSV export | ⬜ Pending |
-| Storage | ✅ Local disk (`LOCAL_STORAGE_PATH`) · ⬜ GCS pending |
+| Storage | ✅ GCS (`GCSStorage`, production) · ✅ Local disk (`LOCAL_STORAGE_PATH`, dev) |
 | Scan-to-PDF | No backend work — scans upload through `POST /documents`. See `docs/scan_to_pdf.md` |
 
 ## Planned Route Surface

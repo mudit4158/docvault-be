@@ -1,3 +1,6 @@
+from typing import Literal
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,10 +16,23 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
 
     # Storage
-    #   local  files under local_storage_path (development)
-    #   gcs    Google Cloud Storage — not built yet, tracked in docs/TRACKER.md
-    storage_backend: str = "local"
+    #   local  files under local_storage_path (development, no GCP credentials needed)
+    #   gcs    Google Cloud Storage (production)
+    storage_backend: Literal["local", "gcs"] = "local"
     local_storage_path: str = "./uploads"
+    gcs_bucket_name: str | None = None
+    # Usually inferrable from credentials/ADC — set explicitly only if needed.
+    gcs_project_id: str | None = None
+    # Local dev only: path to a service-account JSON key. Leave unset in real
+    # deployments — Workload Identity/ADC resolves credentials automatically
+    # from the service account attached to the compute resource.
+    gcs_credentials_path: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_storage_config(self) -> "Settings":
+        if self.storage_backend == "gcs" and not self.gcs_bucket_name:
+            raise ValueError("GCS_BUCKET_NAME is required when STORAGE_BACKEND=gcs")
+        return self
 
     # Encryption at rest. See app/shared/encryption.py for the expected format.
     encryption_key: str

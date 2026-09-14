@@ -18,6 +18,10 @@ dependencies = [
     "cryptography>=42.0.0",
     # Reads PDF page counts server-side; the client's count is never trusted.
     "pypdf>=5.0.0",
+    # Primary storage backend. Sync client under the hood (built on `requests`);
+    # GCSStorage wraps every call in asyncio.to_thread, matching LocalStorage's
+    # existing pattern rather than pulling in a separate async-native client.
+    "google-cloud-storage>=2.18.0",
 ]
 
 [project.optional-dependencies]

@@ -10,10 +10,10 @@ Secure personal document vault. Users upload, organise, and share documents with
 |---|---|
 | `shared` | ✅ DB, auth, storage interface, exceptions, pagination, **audit framework** |
 | `user_management` | ✅ **Complete** — register, login, groups, invitations, members, admin transfer |
-| `document_management` | ✅ Upload, list/search, detail, rename, type, tags, trash/restore, sharing, download, access log. ⬜ GCS, thumbnails, compression, CSV export, preview |
+| `document_management` | ✅ Upload, list/search, detail, rename, type, tags, trash/restore, sharing, download, access log, GCS storage. ⬜ thumbnails, compression, CSV export, preview |
 | `billing` | ⬜ Scaffold — one sample flow (`GET /billing/subscriptions`) |
 
-**210 tests passing.** Files are stored encrypted on local disk (`LOCAL_STORAGE_PATH`, gitignored `uploads/`) until the GCS backend is built.
+**210 tests passing.** Files are stored encrypted; GCS (`GCSStorage`) is the production backend, local disk (`LOCAL_STORAGE_PATH`, gitignored `uploads/`) remains for development and any checkout without GCP credentials. See `app/shared/storage/interface.py`.
 
 Everything not marked ✅ is **specified but not implemented**. Before building, find the spec — each module's `CLAUDE.md` has a status table pointing at the `docs/*.md` describing it. The specs encode decisions already made; do not re-derive them.
 

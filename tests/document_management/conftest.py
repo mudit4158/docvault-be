@@ -1,18 +1,30 @@
 """Fixtures and helpers for document_management tests."""
 
 import io
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 from httpx import AsyncClient, Response
 from pypdf import PdfWriter
 
+import app.shared.storage.interface as storage_module
 from app.config import settings
 from tests.user_management.conftest import User, add_member, make_user
 
 DOCS = "/api/v1/documents"
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
+@pytest.fixture(autouse=True)
+def _reset_storage_singleton() -> Generator[None, None, None]:
+    """get_storage() caches its backend; without this, a test that runs after
+    one which already built a GCSStorage/LocalStorage would keep reusing it,
+    ignoring this file's own monkeypatches below."""
+    storage_module._storage_singleton = None
+    yield
+    storage_module._storage_singleton = None
 
 
 @pytest.fixture(autouse=True)
