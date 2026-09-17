@@ -56,6 +56,17 @@ class Settings(BaseSettings):
     #   none          auditing disabled
     audit_sink: str = "per_table"
 
+    # No browser client exists yet, so there is nothing to allow by default.
+    # Comma-separated in the env var, e.g. CORS_ALLOWED_ORIGINS=https://app.example.com
+    # Kept as a plain str field (not list[str]) so pydantic-settings never
+    # tries to JSON-decode it — that decoding is automatic for list-typed
+    # fields and would reject a plain comma-separated value.
+    cors_allowed_origins: str = ""
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
+
     # Business rules (PRD §9 — all configurable)
     max_upload_size_bytes: int = 20 * 1024 * 1024  # 20 MB
     daily_upload_cap: int = 10

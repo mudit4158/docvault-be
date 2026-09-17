@@ -158,6 +158,10 @@ activemq-data/
 # people's identity documents — never commit them.
 uploads/
 
+# Local pg_dump backups (backup_db.sh) — the bucket is the durable copy,
+# these are transient local staging files before upload.
+/backups/
+
 # Service account / credential keys (GCS, Firebase Admin SDK) — long-lived
 # secrets, never commit regardless of filename. Covers this repo's own
 # GCS_CREDENTIALS_PATH / FIREBASE_CREDENTIALS_PATH conventions and anything
@@ -167,8 +171,12 @@ firebase-key.json
 gcs-key.json
 serviceAccountKey.json
 
-# Environments
+# Environments — every real .env variant is ignored; only the checked-in
+# *.example templates are exceptions.
 .env
+.env.*
+!.env.example
+!.env.production.example
 .envrc
 .venv
 env/

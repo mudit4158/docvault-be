@@ -1,0 +1,87 @@
+# Production stack for the e2-micro VM. Local dev does NOT use this file —
+# local dev runs `uvicorn` directly against SQLite (see README.md); this is
+# the real, three-container prod deployment (db + api + caddy).
+#
+# All three run on this single VM. `mem_limit` on each is deliberate: an
+# e2-micro has only 1 GB RAM total, and one runaway container should not be
+# able to OOM-kill the other two.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: docvault
+      POSTGRES_USER: docvault
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Postgres's defaults assume more RAM than this box has to spare.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=20
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # No published ports — reachable only from `api`, over the internal
+    # Docker network, never from outside the box.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docvault -d docvault"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 300m
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Fixed at the compose level rather than left to `.env` — the API
+      # always talks to the sibling `db` container by its service name, on
+      # the internal network, never to an external host.
+      DATABASE_URL: postgresql+asyncpg://docvault:${POSTGRES_PASSWORD}@db:5432/docvault
+    # No GCS_CREDENTIALS_PATH / FIREBASE_CREDENTIALS_PATH here and none in
+    # .env either — the VM's attached service account IS the ADC identity,
+    # so there is no key file to mount. See app/shared/storage/interface.py
+    # and app/shared/firebase.py.
+    volumes:
+      # backup_db.sh writes a gzipped pg_dump here from the host side, then
+      # execs into this same container to upload it — reuses the app's
+      # already-installed google-cloud-storage client + ADC identity rather
+      # than requiring gsutil/gcloud installed on the bare VM.
+      - ./backups:/app/backups
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    mem_limit: 400m
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Caddy substitutes {$DOMAIN} in the Caddyfile from this. Set once in
+      # .env — e.g. DOMAIN=docvault.dash.domain.digitalplat.org
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 100m
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:

@@ -24,9 +24,14 @@ app = FastAPI(
 # choice rather than a code change.
 configure_audit(get_sink(settings.audit_sink))
 
+# The only client today is the native Android app, which never sends an
+# Origin header — CORS is a browser-enforced concept, so this middleware is
+# inert for it either way. Kept explicit and locked down (rather than "*")
+# so the day a web client shows up, someone has to deliberately add its
+# origin here instead of the API silently already being wide open.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
