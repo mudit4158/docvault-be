@@ -97,7 +97,21 @@ class GCSStorage(StorageBackend):
     async def put(self, key: str, data: bytes) -> None:
         # A GCS object write is atomic at the object level — no tmp-file-then-
         # rename dance needed, unlike LocalStorage.
-        await asyncio.to_thread(lambda: self._bucket().blob(key).upload_from_string(data))
+        #
+        # content_type is explicit: upload_from_string() defaults to
+        # "text/plain" if not given, which would mislabel every object (this
+        # is always encrypted ciphertext, never the real document's type —
+        # that's a DocVault-app-level concern, decided after decrypt, not a
+        # property of the opaque bytes GCS stores). A browser or tool opening
+        # the raw object directly would otherwise try to render ciphertext as
+        # text and show garbage — which is expected for an encrypted blob,
+        # but "text/plain" specifically invites someone to mistake that for a
+        # real error rather than "this is encrypted, of course it looks broken."
+        await asyncio.to_thread(
+            lambda: self._bucket().blob(key).upload_from_string(
+                data, content_type="application/octet-stream"
+            )
+        )
 
     async def get(self, key: str) -> bytes:
         def _read() -> bytes:

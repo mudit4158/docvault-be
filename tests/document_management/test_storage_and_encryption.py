@@ -65,7 +65,9 @@ async def test_gcs_put_uploads_the_given_bytes_under_the_given_key() -> None:
     storage, bucket = _gcs_storage_with_mock_bucket()
     await storage.put("documents/abc/original", b"bytes")
     bucket.blob.assert_called_once_with("documents/abc/original")
-    bucket.blob.return_value.upload_from_string.assert_called_once_with(b"bytes")
+    bucket.blob.return_value.upload_from_string.assert_called_once_with(
+        b"bytes", content_type="application/octet-stream"
+    )
 
 
 async def test_gcs_get_returns_the_downloaded_bytes() -> None:
