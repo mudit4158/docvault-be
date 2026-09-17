@@ -10,6 +10,8 @@ schemas cap password length to match, so this surfaces as a 422 at the edge
 instead of a 500 from here.
 """
 
+import re
+
 import bcrypt
 
 # bcrypt's hard limit. Enforced at the schema layer; defined here so the
@@ -18,6 +20,33 @@ MAX_PASSWORD_BYTES = 72
 MIN_PASSWORD_LENGTH = 8
 
 _ROUNDS = 12
+
+_HAS_UPPER = re.compile(r"[A-Z]")
+_HAS_LOWER = re.compile(r"[a-z]")
+_HAS_DIGIT = re.compile(r"\d")
+# Anything not a letter/digit/whitespace counts as a special character —
+# deliberately broad rather than a fixed punctuation set, so it doesn't
+# reject a symbol the list-writer didn't think of.
+_HAS_SPECIAL = re.compile(r"[^A-Za-z0-9\s]")
+
+
+def password_strength_errors(password: str) -> list[str]:
+    """What's missing for `password` to meet the complexity policy — empty if none.
+
+    Checked at registration and password change, deliberately NOT at login
+    (see docs/auth_flow.md — applying strength rules there would reject a
+    valid pre-policy password, or leak the policy shape to an attacker).
+    """
+    errors = []
+    if not _HAS_UPPER.search(password):
+        errors.append("at least one uppercase letter")
+    if not _HAS_LOWER.search(password):
+        errors.append("at least one lowercase letter")
+    if not _HAS_DIGIT.search(password):
+        errors.append("at least one number")
+    if not _HAS_SPECIAL.search(password):
+        errors.append("at least one special character")
+    return errors
 
 
 def hash_password(plain: str) -> str:

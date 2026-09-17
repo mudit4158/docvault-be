@@ -158,6 +158,15 @@ activemq-data/
 # people's identity documents — never commit them.
 uploads/
 
+# Service account / credential keys (GCS, Firebase Admin SDK) — long-lived
+# secrets, never commit regardless of filename. Covers this repo's own
+# GCS_CREDENTIALS_PATH / FIREBASE_CREDENTIALS_PATH conventions and anything
+# else shaped like one.
+*-key.json
+firebase-key.json
+gcs-key.json
+serviceAccountKey.json
+
 # Environments
 .env
 .envrc

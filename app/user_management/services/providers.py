@@ -20,8 +20,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.shared.clock import utcnow
 from app.shared.exceptions import UnauthorizedError
 from app.user_management.models.auth_identity import AuthIdentity
+from app.user_management.services.firebase_verification import verify_phone_and_resolve_account
 from app.user_management.services.security import hash_password, verify_password
 
 
@@ -79,9 +81,50 @@ class PasswordProvider(AuthProvider):
 _DUMMY_HASH = hash_password("timing-equalisation-placeholder")
 
 
+class FirebaseOtpProvider(AuthProvider):
+    """A Firebase Phone Auth ID token, already verified client-side.
+
+    Firebase Phone Auth is entirely client-driven: the Android app talks to
+    Firebase directly, and Firebase sends the SMS and owns the resend
+    cooldown. This provider's only job is to verify the resulting ID token
+    (via `verify_phone_and_resolve_account`, shared with forgot-password) and
+    resolve it to a DocVault account — never to send or check an OTP itself.
+    See that function's docstring for why failures here aren't uniform the
+    way PasswordProvider's are.
+    """
+
+    provider_key = "otp"
+
+    async def authenticate(self, db: AsyncSession, credentials: dict[str, Any]) -> uuid.UUID:
+        account = await verify_phone_and_resolve_account(db, credentials["firebase_id_token"])
+
+        now = utcnow()
+        identity = await db.scalar(
+            select(AuthIdentity).where(
+                AuthIdentity.account_id == account.id,
+                AuthIdentity.provider == self.provider_key,
+            )
+        )
+        if identity is None:
+            identity = AuthIdentity(
+                account_id=account.id,
+                provider=self.provider_key,
+                provider_subject=account.phone,
+            )
+            db.add(identity)
+
+        # A verified Firebase token proves phone ownership on every login,
+        # not just the first — unlike a password, there's no reason to leave
+        # verified_at stuck at its original value.
+        identity.verified_at = now
+        identity.last_used_at = now
+        await db.flush()
+        return account.id
+
+
 _PROVIDERS: dict[str, AuthProvider] = {
     PasswordProvider.provider_key: PasswordProvider(),
-    # "otp":    OtpProvider(),      -> phase 2
+    FirebaseOtpProvider.provider_key: FirebaseOtpProvider(),
     # "google": GoogleProvider(),   -> phase 3
 }
 

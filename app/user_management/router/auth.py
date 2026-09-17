@@ -8,6 +8,7 @@ from app.shared.db.session import get_db
 from app.user_management.schemas.account import (
     AccountResponse,
     ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     QuotaResponse,
     RegisterRequest,
@@ -17,9 +18,11 @@ from app.user_management.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# /auth/register and /auth/login are the ONLY unauthenticated routes in the
-# API — there is no caller to authenticate yet. Every other route in every
-# module carries the get_current_account_id dependency.
+# /auth/register, /auth/login and /auth/password/forgot are the ONLY
+# unauthenticated routes in the API — there is no caller to authenticate yet
+# on any of them (forgot-password can't require a token: the whole point is
+# the caller can't log in). Every other route in every module carries the
+# get_current_account_id dependency.
 
 
 @router.post("/register", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
@@ -51,6 +54,18 @@ async def change_password(
 ) -> None:
     """Change the account's password. Requires the current one."""
     await AuthService(db).change_password(account_id, body)
+
+
+@router.post("/password/forgot", status_code=status.HTTP_204_NO_CONTENT)
+async def forgot_password(
+    body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)
+) -> None:
+    """Reset a forgotten password via a Firebase-verified phone number.
+
+    Unauthenticated — no current password needed, proof of phone ownership
+    stands in for it.
+    """
+    await AuthService(db).reset_password(body)
 
 
 @router.get("/me/quota", response_model=QuotaResponse)

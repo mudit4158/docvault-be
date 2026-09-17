@@ -8,7 +8,8 @@ from httpx import AsyncClient
 REGISTER = "/api/v1/auth/register"
 LOGIN = "/api/v1/auth/login"
 
-PASSWORD = "correct-horse-battery"
+# Upper + lower + digit + special, to satisfy the registration complexity policy.
+PASSWORD = "Correct-Horse-Battery1"
 
 
 @dataclass

@@ -34,6 +34,19 @@ class Settings(BaseSettings):
             raise ValueError("GCS_BUCKET_NAME is required when STORAGE_BACKEND=gcs")
         return self
 
+    # OTP login (Firebase Phone Auth). Firebase itself sends the SMS and owns
+    # the resend cooldown — client-side, not something this backend controls.
+    # What the backend DOES enforce: after `otp_max_verify_attempts` failed
+    # attempts to log in as a phone number with no matching account (the one
+    # enumeration surface left once Firebase has already proven phone
+    # ownership), that phone is locked out for `otp_lockout_minutes`.
+    firebase_project_id: str | None = None
+    # Local dev only: path to a service-account JSON key. Leave unset in real
+    # deployments — resolved via Application Default Credentials instead.
+    firebase_credentials_path: str | None = None
+    otp_max_verify_attempts: int = 5
+    otp_lockout_minutes: int = 15
+
     # Encryption at rest. See app/shared/encryption.py for the expected format.
     encryption_key: str
 

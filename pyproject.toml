@@ -22,6 +22,9 @@ dependencies = [
     # GCSStorage wraps every call in asyncio.to_thread, matching LocalStorage's
     # existing pattern rather than pulling in a separate async-native client.
     "google-cloud-storage>=2.18.0",
+    # OTP login: verifies the Firebase ID token the Android app obtains from
+    # Firebase Phone Auth (client-driven — this backend never sends SMS itself).
+    "firebase-admin>=6.5.0",
 ]
 
 [project.optional-dependencies]
