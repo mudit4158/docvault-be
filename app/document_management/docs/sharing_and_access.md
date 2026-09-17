@@ -32,6 +32,17 @@ Permission = Literal["view", "download"]
 
 The detail screen's "1 group" / "Private" label is the **count of active grants**, computed at read time, not a stored column.
 
+## Preview vs. Download
+
+Two endpoints return the same decrypted bytes but gate and log differently:
+
+- `GET /documents/{id}/download` — owner or `download` permission only. 403s a `view`-only member. Sets `Content-Disposition: attachment`. Logs `"download"`.
+- `GET /documents/{id}/preview` — owner **or `view` or `download`** permission — anyone with any access at all. No `Content-Disposition` (rendered in-app, never saved to a file). Logs `"view"`, never `"download"`.
+
+This is the entire reason the `view` permission tier exists: a `view`-only member can open the document in the app but has no path to a saved copy. Without `/preview`, `view` permission granted nothing to actually view with. See `app/user_management/../document_management/services/document_service.py`'s `preview()` and `download()` — they differ only in which permissions pass and which event they log; do not merge them into one method with a flag, since that would make it easy to accidentally let a flag default to the wrong (more permissive) side.
+
+The Android client blocks screenshots while a preview is open (`SecureScreen()`, app-wide already) and never writes preview bytes to a user-visible file — see `docvault-fe`'s in-app viewer.
+
 ## Permission Resolution
 
 The single authority for "can this account do this to this document". Every read, preview, and download path calls it. Implement it once, in `services/access_service.py`, and call it from everywhere:

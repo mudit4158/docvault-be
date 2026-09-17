@@ -226,3 +226,48 @@ async def test_refused_download_is_not_logged(
     await client.get(f"{DOCS}/{doc['id']}/download", headers=member.auth)
 
     assert "download" not in await events_for(db, doc["id"])
+
+
+# --- previewing (in-app view) ----------------------------------------------
+
+
+async def test_view_only_member_can_preview(
+    client: AsyncClient, owner: User, member: User, family: str
+) -> None:
+    """The whole point of the view tier: look without downloading."""
+    content = pdf_bytes(pages=1)
+    doc = await upload_ok(client, owner, content=content)
+    await share(client, owner, doc["id"], family, "view")
+
+    resp = await client.get(f"{DOCS}/{doc['id']}/preview", headers=member.auth)
+    assert resp.status_code == 200
+    assert resp.content == content
+    assert "content-disposition" not in resp.headers
+    assert resp.headers["cache-control"] == "no-store"
+
+
+async def test_download_permission_can_also_preview(
+    client: AsyncClient, owner: User, member: User, family: str
+) -> None:
+    doc = await upload_ok(client, owner)
+    await share(client, owner, doc["id"], family, "download")
+
+    resp = await client.get(f"{DOCS}/{doc['id']}/preview", headers=member.auth)
+    assert resp.status_code == 200
+
+
+async def test_non_member_cannot_preview(client: AsyncClient, owner: User, outsider: User) -> None:
+    doc = await upload_ok(client, owner)
+    resp = await client.get(f"{DOCS}/{doc['id']}/preview", headers=outsider.auth)
+    assert resp.status_code == 404
+
+
+async def test_preview_is_logged_as_view_not_download(
+    client: AsyncClient, owner: User, db: AsyncSession
+) -> None:
+    doc = await upload_ok(client, owner)
+    await client.get(f"{DOCS}/{doc['id']}/preview", headers=owner.auth)
+
+    events = await events_for(db, doc["id"])
+    assert "view" in events
+    assert "download" not in events

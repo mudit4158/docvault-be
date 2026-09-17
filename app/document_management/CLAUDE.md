@@ -51,7 +51,7 @@ CLAUDE.md is the map. Implementation logic lives in `docs/`:
 | Upload — size cap, magic-byte type check, quota, AES-256-GCM, store, log | ✅ `services/document_service.py`, `services/file_inspection.py` |
 | Download (original) | ✅ 403 for view-only |
 | Compression tiers | ⬜ Pending — `docs/download_and_compression.md` |
-| In-app preview (screenshots blocked) | ⬜ Pending — tracker #63 |
+| In-app preview (screenshots blocked) | ✅ `GET /documents/{id}/preview` — owner or any share permission (`view` included), logs `"view"` not `"download"` |
 | Rename, change type | ✅ Extension preserved server-side |
 | Soft delete / restore / trash | ✅ Delete revokes all shares; restore does not bring them back (D2) |
 | Hard-delete job | 🟡 `scripts/purge_trash.py` built; scheduling pending |
@@ -75,6 +75,7 @@ CLAUDE.md is the map. Implementation logic lives in `docs/`:
 | `POST` | `/documents/{id}/restore` | ✅ Restore from trash |
 | `GET` | `/documents/trash` | ✅ Trash listing |
 | `GET` | `/documents/{id}/download` | ✅ Original · ⬜ `?compression=` tiers pending |
+| `GET` | `/documents/{id}/preview` | ✅ In-app view — owner or any share permission, logs `"view"` |
 | `GET` | `/documents/{id}/download/sizes` | ⬜ Computed size per tier |
 | `POST` | `/documents/{id}/tags` | ✅ Add tag |
 | `DELETE` | `/documents/{id}/tags/{tag_id}` | ✅ Remove tag |

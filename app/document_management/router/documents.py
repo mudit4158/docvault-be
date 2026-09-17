@@ -150,6 +150,29 @@ async def download_document(
     )
 
 
+@router.get("/{document_id}/preview")
+async def preview_document(
+    document_id: uuid.UUID,
+    account_id: uuid.UUID = Depends(get_current_account_id),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """The original file, for in-app viewing only. Owner, or ANY share permission.
+
+    Unlike `/download`, a view-only member is allowed here — that tier exists
+    precisely so they can look without saving a copy. No `Content-Disposition`
+    header: this is rendered in-app, not saved to a file.
+    """
+    document, data = await DocumentService(db).preview(document_id, account_id)
+    return Response(
+        content=data,
+        media_type=document.mime_type,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 # --- tags ------------------------------------------------------------------
 
 

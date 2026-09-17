@@ -269,6 +269,26 @@ class DocumentService:
         await self.db.flush()
         return document, data
 
+    async def preview(
+        self, document_id: uuid.UUID, account_id: uuid.UUID
+    ) -> tuple[Document, bytes]:
+        """Decrypted bytes for in-app viewing — anyone with any access, unlike download.
+
+        A view-only member gets bytes here (unlike `download`, which 403s
+        them) — that's the entire point of the "view" permission tier: they
+        can open the document in the app but not save a copy. Logs a `view`
+        event, never `download`, so the access log's "who downloaded this"
+        history stays accurate.
+        """
+        document, _ = await self.access.require_access(document_id, account_id)
+        if document.storage_key is None:
+            raise GoneError("This document's file is no longer available.")
+
+        data = decrypt(await get_storage().get(document.storage_key))
+        await self.log.record(document.id, account_id, "view")
+        await self.db.flush()
+        return document, data
+
     # --- trash ------------------------------------------------------------
 
     async def soft_delete(self, document_id: uuid.UUID, account_id: uuid.UUID) -> None:
