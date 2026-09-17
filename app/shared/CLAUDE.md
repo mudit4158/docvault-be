@@ -12,7 +12,7 @@
 | `db/session.py` | `engine`, `AsyncSessionLocal`, `get_db` — the FastAPI session dependency |
 | `auth/jwt.py` | `create_access_token(subject)`, `decode_token(token)` |
 | `auth/dependencies.py` | `get_current_account_id` — FastAPI `Depends` that validates the bearer token and returns a `uuid.UUID` |
-| `storage/interface.py` | `StorageBackend` abstract class + `get_storage()` factory; concrete impls: `LocalStorage`, `S3Storage` |
+| `storage/interface.py` | `StorageBackend` abstract class + `get_storage()` factory (returns a process-wide singleton); concrete impls: `LocalStorage` (dev), `GCSStorage` (production) |
 | `exceptions.py` | Typed `HTTPException` subclasses: `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `QuotaExceededError`, `FileTooLargeError` |
 | `pagination.py` | `PageParams`, `PagedResponse[T]` |
 | `audit/` | Automatic, table-agnostic audit trail — see below |

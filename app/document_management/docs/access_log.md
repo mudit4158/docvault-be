@@ -20,7 +20,7 @@ Anyone adding a mutation path to this table is breaking the product's audit guar
 
 ```python
 AccessEvent = Literal[
-    "upload",    # document created (upload or scan save)
+    "upload",    # document created (from storage or a scan — same endpoint)
     "view",      # preview opened
     "download",  # file downloaded, compressed or not
     "share",     # ShareGrant created or its permission changed
@@ -69,7 +69,7 @@ Never make this a background task or a fire-and-forget queue write. It is transa
 
 | Event | Emitted by |
 |---|---|
-| `upload` | `DocumentService.upload`, `ScanService.save` |
+| `upload` | `DocumentService.upload` (covers scans too) |
 | `view` | preview / detail endpoint, after the permission check passes |
 | `download` | download endpoint, after the permission check passes |
 | `share` | `ShareService.grant` |

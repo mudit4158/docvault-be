@@ -29,6 +29,7 @@ import app.user_management.models.auth_identity
 import app.user_management.models.group
 import app.user_management.models.invitation
 import app.user_management.models.membership
+import app.user_management.models.otp_attempt
 import app.user_management.models.quota
 
 # --- audit tables -----------------------------------------------------------

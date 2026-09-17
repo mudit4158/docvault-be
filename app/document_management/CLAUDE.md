@@ -14,7 +14,7 @@ Owns the **document lifecycle and everything that governs access to a document**
 | Access log (audit trail) | ✅ Yes |
 | Download + compression | ✅ Yes |
 | Thumbnail generation | ✅ Yes |
-| Scan-to-PDF save endpoint | ✅ Yes |
+| Scanned PDFs | ✅ Yes — via the normal upload endpoint; no scan-specific endpoint |
 | Who a user *is* | ❌ → `user_management` |
 | Group membership / who is in a group | ❌ → `user_management` |
 | Whether a paid feature is unlocked | ❌ → `billing` |
@@ -29,7 +29,7 @@ CLAUDE.md is the map. Implementation logic lives in `docs/`:
 | [`docs/sharing_and_access.md`](docs/sharing_and_access.md) | ShareGrant semantics, the permission resolution algorithm, revocation |
 | [`docs/access_log.md`](docs/access_log.md) | Event taxonomy, append-only rules, CSV export |
 | [`docs/download_and_compression.md`](docs/download_and_compression.md) | Compression tiers, server-side size computation, streaming |
-| [`docs/scan_to_pdf.md`](docs/scan_to_pdf.md) | Client/server split for the scan flow, single-save contract |
+| [`docs/scan_to_pdf.md`](docs/scan_to_pdf.md) | Why scans reuse the upload endpoint; client-side size, memory and security requirements |
 
 **Read the relevant doc before implementing.** Add a new `docs/*.md` per feature area rather than growing this file.
 
@@ -47,36 +47,46 @@ CLAUDE.md is the map. Implementation logic lives in `docs/`:
 
 | Feature | Status |
 |---|---|
-| List documents (`GET /documents`) | ✅ **Sample flow** — copy this pattern |
-| Upload | ⬜ Not built — `docs/document_lifecycle.md` |
-| Preview / download | ⬜ Not built — `docs/download_and_compression.md` |
-| Rename, change type | ⬜ Not built — `docs/document_lifecycle.md` |
-| Soft delete / restore / trash | ⬜ Not built — `docs/document_lifecycle.md` |
-| Hard-delete background job | ⬜ Not built — `docs/document_lifecycle.md` |
-| Tags | ⬜ Not built |
-| Share grants | ⬜ Not built — `docs/sharing_and_access.md` |
-| Access log + CSV export | ⬜ Not built — `docs/access_log.md` |
-| Scan-to-PDF save | ⬜ Not built — `docs/scan_to_pdf.md` |
+| List / search / filter (`GET /documents`) | ✅ Name or tag search, doc-type + tag filters, paging |
+| Upload — size cap, magic-byte type check, quota, AES-256-GCM, store, log | ✅ `services/document_service.py`, `services/file_inspection.py` |
+| Download (original) | ✅ 403 for view-only |
+| Compression tiers | ⬜ Pending — `docs/download_and_compression.md` |
+| In-app preview (screenshots blocked) | ✅ `GET /documents/{id}/preview` — owner or any share permission (`view` included), logs `"view"` not `"download"` |
+| Rename, change type | ✅ Extension preserved server-side |
+| Soft delete / restore / trash | ✅ Delete revokes all shares; restore does not bring them back (D2) |
+| Hard-delete job | 🟡 `scripts/purge_trash.py` built; scheduling pending |
+| Thumbnails | ⬜ Pending |
+| Tags + suggestions | ✅ Owner-only; suggestions = defaults + caller's own labels |
+| Share grants — grant, update, revoke, group documents | ✅ Owner must belong to the group |
+| Access log read | ✅ |
+| Access log CSV export | ⬜ Pending |
+| Storage | ✅ GCS (`GCSStorage`, production) · ✅ Local disk (`LOCAL_STORAGE_PATH`, dev) |
+| Scan-to-PDF | No backend work — scans upload through `POST /documents`. See `docs/scan_to_pdf.md` |
 
 ## Planned Route Surface
 
 | Method | Path | Feature |
 |---|---|---|
-| `GET` | `/documents` | ✅ Built — list, search, filter, sort, paginate |
-| `POST` | `/documents` | Upload |
-| `GET` | `/documents/{id}` | Detail |
-| `PATCH` | `/documents/{id}` | Rename, change type |
-| `DELETE` | `/documents/{id}` | Soft delete |
-| `POST` | `/documents/{id}/restore` | Restore from trash |
-| `GET` | `/documents/trash` | Trash listing |
-| `GET` | `/documents/{id}/download` | Download, `?compression=none\|standard\|high` |
-| `GET` | `/documents/{id}/download/sizes` | Computed size per tier |
-| `POST` `DELETE` | `/documents/{id}/tags` | Add / remove tag |
-| `GET` `POST` | `/documents/{id}/shares` | List / create share grant |
-| `DELETE` | `/documents/{id}/shares/{grant_id}` | Revoke grant |
-| `GET` | `/documents/{id}/access-log` | Audit trail (owner only) |
-| `GET` | `/documents/{id}/access-log/export` | CSV export (owner only) |
-| `POST` | `/documents/scan` | Save a completed scan session as one PDF document |
+| `GET` | `/documents` | ✅ List, search, filter, paginate |
+| `POST` | `/documents` | ✅ Upload (multipart: `file`, `doc_type`, optional `name`) |
+| `GET` | `/documents/{id}` | ✅ Detail |
+| `PATCH` | `/documents/{id}` | ✅ Rename, change type |
+| `DELETE` | `/documents/{id}` | ✅ Soft delete |
+| `POST` | `/documents/{id}/restore` | ✅ Restore from trash |
+| `GET` | `/documents/trash` | ✅ Trash listing |
+| `GET` | `/documents/{id}/download` | ✅ Original · ⬜ `?compression=` tiers pending |
+| `GET` | `/documents/{id}/preview` | ✅ In-app view — owner or any share permission, logs `"view"` |
+| `GET` | `/documents/{id}/download/sizes` | ⬜ Computed size per tier |
+| `POST` | `/documents/{id}/tags` | ✅ Add tag |
+| `DELETE` | `/documents/{id}/tags/{tag_id}` | ✅ Remove tag |
+| `GET` | `/tags` | ✅ Tag suggestions |
+| `GET` `POST` | `/documents/{id}/shares` | ✅ List / create-or-update share grant |
+| `DELETE` | `/documents/{id}/shares/{grant_id}` | ✅ Revoke grant |
+| `GET` | `/groups/{id}/documents` | ✅ Documents shared into a group (members only) |
+| `GET` | `/documents/{id}/access-log` | ✅ Audit trail (owner only) |
+| `GET` | `/documents/{id}/access-log/export` | ⬜ CSV export — pending |
+
+**There is deliberately no `/documents/scan`.** A scanned PDF is assembled on the device and uploaded through `POST /documents`, identical to a file from storage.
 
 ## Sample Flow — List Documents
 

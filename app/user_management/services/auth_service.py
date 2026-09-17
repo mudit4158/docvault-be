@@ -25,11 +25,13 @@ from app.user_management.schemas.account import (
     AccountResponse,
     AccountSummary,
     ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
     QuotaResponse,
     RegisterRequest,
     TokenResponse,
 )
+from app.user_management.services.firebase_verification import verify_phone_and_resolve_account
 from app.user_management.services.providers import get_provider
 from app.user_management.services.security import hash_password, verify_password
 
@@ -79,9 +81,11 @@ class AuthService:
     async def login(self, data: LoginRequest) -> TokenResponse:
         """Authenticate via the requested mode and issue an access token."""
         provider = get_provider(data.mode)
-        account_id = await provider.authenticate(
-            self.db, {"phone": data.phone, "password": data.password}
-        )
+        if data.mode == "otp":
+            credentials: dict[str, str] = {"firebase_id_token": data.firebase_id_token or ""}
+        else:
+            credentials = {"phone": data.phone or "", "password": data.password or ""}
+        account_id = await provider.authenticate(self.db, credentials)
         return TokenResponse(access_token=create_access_token(str(account_id)))
 
     async def get_account(self, account_id: uuid.UUID) -> AccountResponse:
@@ -102,6 +106,33 @@ class AuthService:
 
         if not verify_password(data.current_password, identity.secret_hash):
             raise UnauthorizedError("Current password is incorrect")
+
+        identity.secret_hash = hash_password(data.new_password)
+        await self.db.flush()
+
+    async def reset_password(self, data: ForgotPasswordRequest) -> None:
+        """Reset a forgotten password via a Firebase-verified phone number.
+
+        Unauthenticated by necessity — the whole point is the caller can't
+        log in. No `current_password` check either: verified phone ownership
+        (the Firebase token, checked by `verify_phone_and_resolve_account`,
+        including its own per-phone lockout) is the alternate factor here,
+        standing in for it. See docs/auth_flow.md.
+        """
+        account = await verify_phone_and_resolve_account(self.db, data.firebase_id_token)
+
+        identity = await self.db.scalar(
+            select(AuthIdentity).where(
+                AuthIdentity.account_id == account.id,
+                AuthIdentity.provider == "password",
+            )
+        )
+        if identity is None:
+            # Every account gets a password identity at registration
+            # (register() above) — this should be unreachable. Fail clearly
+            # rather than silently creating one with an unexpected shape if
+            # it ever isn't.
+            raise NotFoundError("This account has no password login configured")
 
         identity.secret_hash = hash_password(data.new_password)
         await self.db.flush()
@@ -128,9 +159,11 @@ class AuthService:
         return AccountSummary.model_validate(account)
 
     async def get_quota(self, account_id: uuid.UUID) -> QuotaResponse:
-        quota = await self.db.get(UploadQuota, account_id)
-        if quota is None:
-            raise NotFoundError("Quota not found for this account")
+        # Through the quota service, so an expired window is rolled over before
+        # it is shown and the client never displays a reset time in the past.
+        from app.user_management.services.quota_service import UploadQuotaService
+
+        quota = await UploadQuotaService(self.db).status(account_id)
         return QuotaResponse.model_validate(quota)
 
     async def _require_account(self, account_id: uuid.UUID) -> Account:

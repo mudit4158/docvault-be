@@ -10,10 +10,10 @@ Secure personal document vault. Users upload, organise, and share documents with
 |---|---|
 | `shared` | ✅ DB, auth, storage interface, exceptions, pagination, **audit framework** |
 | `user_management` | ✅ **Complete** — register, login, groups, invitations, members, admin transfer |
-| `document_management` | ⬜ Scaffold — one sample flow (`GET /documents`) |
+| `document_management` | ✅ Upload, list/search, detail, rename, type, tags, trash/restore, sharing, download, preview, access log, GCS storage. ⬜ thumbnails, compression, CSV export |
 | `billing` | ⬜ Scaffold — one sample flow (`GET /billing/subscriptions`) |
 
-14 tables · 20 endpoints · **101 tests passing**.
+**210 tests passing.** Files are stored encrypted; GCS (`GCSStorage`) is the production backend, local disk (`LOCAL_STORAGE_PATH`, gitignored `uploads/`) remains for development and any checkout without GCP credentials. See `app/shared/storage/interface.py`.
 
 Everything not marked ✅ is **specified but not implemented**. Before building, find the spec — each module's `CLAUDE.md` has a status table pointing at the `docs/*.md` describing it. The specs encode decisions already made; do not re-derive them.
 
@@ -36,7 +36,7 @@ Two tiers, deliberately:
 |---|---|
 | [`app/shared/`](app/shared/CLAUDE.md) | DB session, JWT auth, storage interface, exceptions, pagination |
 | [`app/user_management/`](app/user_management/CLAUDE.md) | Accounts, auth, quotas, groups, memberships, invitations |
-| [`app/document_management/`](app/document_management/CLAUDE.md) | Documents, tags, share grants, access logs, download, scan save |
+| [`app/document_management/`](app/document_management/CLAUDE.md) | Documents, tags, share grants, access logs, download |
 | [`app/billing/`](app/billing/CLAUDE.md) | Subscriptions, credits, feature gating, limit overrides |
 
 ### Dependency Direction

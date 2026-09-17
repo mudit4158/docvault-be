@@ -6,6 +6,8 @@ import app.shared.audit  # noqa: F401  (registers the audit session listeners)
 from app.billing.router.subscriptions import router as billing_router
 from app.config import settings
 from app.document_management.router.documents import router as documents_router
+from app.document_management.router.group_documents import router as group_documents_router
+from app.document_management.router.tags import router as tags_router
 from app.shared.audit import configure_audit, get_sink
 from app.user_management.router.accounts import router as accounts_router
 from app.user_management.router.auth import router as auth_router
@@ -22,9 +24,14 @@ app = FastAPI(
 # choice rather than a code change.
 configure_audit(get_sink(settings.audit_sink))
 
+# The only client today is the native Android app, which never sends an
+# Origin header — CORS is a browser-enforced concept, so this middleware is
+# inert for it either way. Kept explicit and locked down (rather than "*")
+# so the day a web client shows up, someone has to deliberately add its
+# origin here instead of the API silently already being wide open.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,15 +45,17 @@ app.add_middleware(
 # version independently of the web client.
 #
 # Currently registered:
-#   user_management     -> auth, groups, invitations   (built)
-#   document_management -> documents                   (sample flow only)
-#   billing             -> subscriptions                (sample flow only)
+#   user_management     -> auth, accounts, groups, invitations   (built)
+#   document_management -> documents, group documents, tags      (built)
+#   billing             -> subscriptions                          (sample flow only)
 # ---------------------------------------------------------------------------
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(accounts_router, prefix="/api/v1")
 app.include_router(groups_router, prefix="/api/v1")
 app.include_router(invitations_router, prefix="/api/v1")
 app.include_router(documents_router, prefix="/api/v1")
+app.include_router(group_documents_router, prefix="/api/v1")
+app.include_router(tags_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
 
 

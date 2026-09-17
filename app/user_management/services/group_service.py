@@ -113,22 +113,24 @@ class GroupService:
     async def delete(self, group_id: uuid.UUID, caller_id: uuid.UUID) -> None:
         """Delete a group. Admin only.
 
-        Documents shared into this group are NOT deleted — they stay in their
-        owners' vaults (engineering handoff §2). Once document_management is
-        built this must also revoke the group's share grants:
-
-            from app.document_management.services.share_service import ShareService
-            await ShareService(self.db).revoke_all_for_group(group_id)
-
-        The import is function-local by design, to avoid a circular import at
-        module load. Tracked as backend item #9.
+        Every share into the group is revoked first, each with a "revoke"
+        access-log entry. The documents themselves are NOT deleted — they stay
+        in their owners' vaults (engineering handoff §2).
         """
         group = await self._require_group(group_id)
         await self._require_admin(group_id, caller_id)
 
+        await self._revoke_group_shares(group_id, caller_id)
         # Memberships and invitations cascade via their FKs.
         await self.db.delete(group)
         await self.db.flush()
+
+    async def _revoke_group_shares(self, group_id: uuid.UUID, actor_id: uuid.UUID) -> None:
+        # Function-local import: document_management depends on this module, so
+        # a module-level import here would be circular.
+        from app.document_management.services.share_service import ShareService
+
+        await ShareService(self.db).revoke_all_for_group(group_id, actor_id)
 
     # --- members ---------------------------------------------------------
 
@@ -200,7 +202,9 @@ class GroupService:
         await self.db.delete(membership)
 
         if total == 1:
+            # Last member leaving deletes the group — same share cascade as delete().
             group = await self._require_group(group_id)
+            await self._revoke_group_shares(group_id, caller_id)
             await self.db.delete(group)
 
         await self.db.flush()

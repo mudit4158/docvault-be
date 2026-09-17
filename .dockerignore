@@ -1,0 +1,33 @@
+# Keep the build context small AND, much more importantly, make sure no
+# secret ever lands inside an image layer — an image can be exported/inspected
+# long after the container is gone, so "gitignored" is not good enough here.
+.git/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Local-dev-only database and uploads — never ship real or test data in the image.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+uploads/
+
+# Secrets. The prod container gets these via docker-compose env/volumes at
+# *runtime*, never baked into the image at build time.
+.env
+.env.*
+!.env.production.example
+*-key.json
+firebase-key.json
+gcs-key.json
+serviceAccountKey.json
+*.pem
+*.jks
+*.keystore

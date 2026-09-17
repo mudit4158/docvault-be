@@ -1,0 +1,14 @@
+# Reverse proxy + automatic HTTPS. Caddy requests and renews the Let's
+# Encrypt cert for {$DOMAIN} itself — that's the entire reason a domain (even
+# a free DigitalPlat subdomain) is required: Let's Encrypt does not issue
+# certs for a bare IP address.
+#
+# {$DOMAIN} is substituted from the DOMAIN env var (see docker-compose.yml).
+
+{$DOMAIN} {
+	reverse_proxy api:8000
+
+	# Never let a browser or intermediary cache identity documents — matches
+	# the API's own no-store headers on /download and /preview.
+	header Cache-Control "no-store"
+}

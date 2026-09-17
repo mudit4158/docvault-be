@@ -1,3 +1,6 @@
+from typing import Literal
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,14 +16,38 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
 
     # Storage
-    storage_backend: str = "local"
+    #   local  files under local_storage_path (development, no GCP credentials needed)
+    #   gcs    Google Cloud Storage (production)
+    storage_backend: Literal["local", "gcs"] = "local"
     local_storage_path: str = "./uploads"
-    aws_bucket_name: str = ""
-    aws_region: str = ""
-    aws_access_key_id: str = ""
-    aws_secret_access_key: str = ""
+    gcs_bucket_name: str | None = None
+    # Usually inferrable from credentials/ADC — set explicitly only if needed.
+    gcs_project_id: str | None = None
+    # Local dev only: path to a service-account JSON key. Leave unset in real
+    # deployments — Workload Identity/ADC resolves credentials automatically
+    # from the service account attached to the compute resource.
+    gcs_credentials_path: str | None = None
 
-    # Encryption
+    @model_validator(mode="after")
+    def _validate_storage_config(self) -> "Settings":
+        if self.storage_backend == "gcs" and not self.gcs_bucket_name:
+            raise ValueError("GCS_BUCKET_NAME is required when STORAGE_BACKEND=gcs")
+        return self
+
+    # OTP login (Firebase Phone Auth). Firebase itself sends the SMS and owns
+    # the resend cooldown — client-side, not something this backend controls.
+    # What the backend DOES enforce: after `otp_max_verify_attempts` failed
+    # attempts to log in as a phone number with no matching account (the one
+    # enumeration surface left once Firebase has already proven phone
+    # ownership), that phone is locked out for `otp_lockout_minutes`.
+    firebase_project_id: str | None = None
+    # Local dev only: path to a service-account JSON key. Leave unset in real
+    # deployments — resolved via Application Default Credentials instead.
+    firebase_credentials_path: str | None = None
+    otp_max_verify_attempts: int = 5
+    otp_lockout_minutes: int = 15
+
+    # Encryption at rest. See app/shared/encryption.py for the expected format.
     encryption_key: str
 
     # Audit storage strategy. See app/shared/audit/sinks/.
@@ -28,6 +55,17 @@ class Settings(BaseSettings):
     #   single_table  one shared audit_logs table, JSON values
     #   none          auditing disabled
     audit_sink: str = "per_table"
+
+    # No browser client exists yet, so there is nothing to allow by default.
+    # Comma-separated in the env var, e.g. CORS_ALLOWED_ORIGINS=https://app.example.com
+    # Kept as a plain str field (not list[str]) so pydantic-settings never
+    # tries to JSON-decode it — that decoding is automatic for list-typed
+    # fields and would reject a plain comma-separated value.
+    cors_allowed_origins: str = ""
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
     # Business rules (PRD §9 — all configurable)
     max_upload_size_bytes: int = 20 * 1024 * 1024  # 20 MB

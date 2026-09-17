@@ -54,8 +54,9 @@ async def test_excluded_columns_do_not_exist_in_the_audit_table(db: AsyncSession
 
 async def test_unaudited_model_gets_no_table() -> None:
     """Only models opting in with __audited__ are captured."""
-    assert audit_table_for("tags") is None
-    assert audit_table_for("documents") is None
+    # The access log is itself an append-only record; auditing it would only
+    # duplicate every row.
+    assert audit_table_for("access_logs") is None
 
 
 # --- capture --------------------------------------------------------------

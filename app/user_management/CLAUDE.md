@@ -33,18 +33,19 @@ CLAUDE.md stays a map. Low-level logic lives in `docs/`:
 |---|---|---|
 | `Account` | `models/account.py` | Identity only — **holds no credentials** |
 | `AuthIdentity` | `models/auth_identity.py` | One row per login method per account |
+| `OtpAttempt` | `models/otp_attempt.py` | Keyed by phone, not account — throttles OTP login against numbers with no account |
 | `UploadQuota` | `models/quota.py` | 1-to-1 with Account; PK is `account_id` |
 | `Group` | `models/group.py` | |
 | `Membership` | `models/group.py` | Composite PK `(group_id, user_id)`; role admin/member |
 | `Invitation` | `models/group.py` | Unique on `(group_id, invited_user_id)` |
 
-All six are `__audited__ = True`.
+All seven are `__audited__ = True`.
 
 ## Implementation Status
 
 | Feature | Status |
 |---|---|
-| Registration | ✅ Built |
+| Registration | ✅ Built — password complexity enforced (upper/lower/digit/special) |
 | Login (password mode) | ✅ Built |
 | Profile (`GET /auth/me`) | ✅ Built |
 | Password change | ✅ Built |
@@ -53,9 +54,10 @@ All six are `__audited__ = True`.
 | Invitations (invite / list / accept / decline) | ✅ Built |
 | Member list, remove, leave | ✅ Built |
 | Admin transfer | ✅ Built |
-| Group delete → revoke share grants | 🟡 Blocked on `document_management.ShareService` |
-| Quota enforcement (counter increment) | ⬜ Belongs to the upload path — item #4 |
-| OTP login | ⬜ Future scope — phase 2 |
+| Group delete / last member leaves → revoke share grants | ✅ Built — calls `ShareService.revoke_all_for_group` |
+| Quota enforcement (counter increment) | ✅ Built — `services/quota_service.py`, called by the upload path |
+| OTP login (Firebase Phone Auth) | ✅ Built — client-driven; backend only verifies the ID token |
+| Forgot password (OTP-verified reset) | ✅ Built — `POST /auth/password/forgot`, shares `verify_phone_and_resolve_account` + its `OtpAttempt` lockout with OTP login |
 | Google / Apple SSO | ⬜ Future scope — phase 3 |
 | Biometric MFA | ⬜ Future scope — phase 4 |
 | Revocable sessions | ⬜ Future scope — third-party auth service |
@@ -66,6 +68,7 @@ All six are `__audited__ = True`.
 |---|---|---|---|
 | `POST` | `/auth/register` | ❌ | — |
 | `POST` | `/auth/login` | ❌ | — |
+| `POST` | `/auth/password/forgot` | ❌ | Firebase-verified phone instead |
 | `GET` | `/auth/me` | ✅ | — |
 | `POST` | `/auth/me/password` | ✅ | + current password |
 | `GET` | `/auth/me/quota` | ✅ | — |

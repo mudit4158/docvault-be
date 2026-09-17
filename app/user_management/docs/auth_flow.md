@@ -1,6 +1,6 @@
 # Auth Flow — Implementation Detail
 
-**Status:** password mode built. OTP, SSO and biometric MFA are future scope.
+**Status:** password mode and OTP (Firebase Phone Auth) mode built, coexisting on the same account. SSO and biometric MFA are future scope.
 
 ## Identity vs Credentials
 
@@ -20,27 +20,53 @@ This is why login modes are additive rather than a rewrite each time.
 `POST /auth/login` carries a `mode` field routed to one `AuthProvider`:
 
 ```
-{ mode: "password", phone, password }   -> PasswordProvider   (built)
-{ mode: "otp",      phone, code }       -> OtpProvider        (phase 2)
-{ mode: "google",   id_token }          -> GoogleProvider     (phase 3)
+{ mode: "password", phone, password }        -> PasswordProvider     (built)
+{ mode: "otp",      firebase_id_token }      -> FirebaseOtpProvider  (built)
+{ mode: "google",   id_token }                -> GoogleProvider      (phase 3)
 ```
 
 Each provider has exactly one job — turn credentials into an `account_id`. Token issuance, the audit actor, and the auth dependency are all mode-agnostic and never change when a mode is added.
 
+**`LoginRequest` stayed a single flat model, not a discriminated union**, despite that being the documented target shape below every time a mode was added. Reason: the Android client's JSON serializer (kotlinx.serialization, `encodeDefaults=false`, the project default) omits `mode` from the wire entirely for a password login, since `"password"` is the client-side default. A Pydantic discriminated union requires the discriminator key to be present in the input to resolve which member to validate against — it would reject every existing password login the moment it shipped. Field requirements are enforced manually instead, via a `model_validator` keyed on `mode` (see `schemas/account.py`).
+
 To add a mode:
 1. Subclass `AuthProvider` in `services/providers.py`.
 2. Register it in `_PROVIDERS`.
-3. Add the value to `AUTH_PROVIDERS` in `models/auth_identity.py` — the enum already reserves `otp`, `google` and `apple`, so no migration is needed.
-4. Convert `LoginRequest` into a discriminated union over per-mode models.
+3. Add the value to `AUTH_PROVIDERS` in `models/auth_identity.py` — the enum already reserves `google` and `apple`, so no migration is needed.
+4. Add the mode's fields to `LoginRequest` as optional, and a branch in its `model_validator`.
 
-Nothing in the routes or `AuthService.login` changes.
+Nothing in the routes or `AuthService.login`'s shape changes — only the small `if data.mode == "otp"` branch that picks which credential dict to build.
+
+## OTP Login (Firebase Phone Auth)
+
+**Entirely client-driven.** The Android app talks to Firebase directly — Firebase sends the SMS and owns the resend cooldown; this backend never sends an SMS and has no visibility into how many times a code was resent. The backend's only job is verifying the ID token Firebase handed the app once the user entered the correct code, via `firebase_admin.auth.verify_id_token()` (`app/shared/firebase.py` lazily initializes the Admin SDK — a service-account key locally, Application Default Credentials in a real deployment, same pattern as `GCSStorage`).
+
+**Uniform failure does NOT apply here**, deliberately, unlike `PasswordProvider`. A valid Firebase token already proves the caller controls that phone number — "no DocVault account for this number" tells them nothing they couldn't already prove by owning the phone. What's still worth throttling: someone with a phone they control repeatedly presenting valid tokens to probe whether *other* numbers are registered isn't possible here (the token proves ownership of *their own* number only) — but hammering login attempts for their own unregistered number is cheap for them and costs us a DB write each time, so `OtpAttempt` (keyed by phone, not account — no account may exist) tracks failed match attempts and locks a phone out for `settings.otp_lockout_minutes` after `settings.otp_max_verify_attempts` failures. Resets to zero the moment that phone successfully matches an account. A malformed/expired/forged token never reaches this table — there's no phone number to attribute it to, and forging a valid-looking Firebase token isn't a realistic attack surface this needs to defend against.
+
+OTP and password are **additive**, not exclusive — `AuthIdentity`'s one-row-per-provider-per-account design means an account can hold both simultaneously (see "Identity vs Credentials" above). Logging in via OTP for the first time creates the `otp` identity row automatically; it doesn't touch the account's `password` identity at all. `verified_at` is refreshed on every successful OTP login (not just the first), since a fresh Firebase token proves phone ownership again each time — unlike a password, there's no reason to leave it stuck at its original value.
+
+The verification+throttling logic (`verify_phone_and_resolve_account` in `services/firebase_verification.py`) is shared with **Forgot Password** below — both need exactly the same thing: proof of phone ownership, resolved to an existing account, with the same per-phone `OtpAttempt` lockout. They share the same `OtpAttempt` row for a given phone too — failing five times via forgot-password and then trying OTP login hits the same lockout, not two independent counters.
+
+## Forgot Password
+
+`POST /auth/password/forgot` — unauthenticated (necessarily: the caller can't log in, that's the premise). Body: `{ firebase_id_token, new_password }`.
+
+```
+1. verify_phone_and_resolve_account(db, firebase_id_token) -> Account, or 401
+2. Find that account's "password" AuthIdentity
+3. identity.secret_hash = bcrypt(new_password)
+```
+
+No `current_password` field, unlike `POST /auth/me/password` — a verified Firebase token is the alternate factor standing in for it. `new_password` goes through the exact same complexity validator as registration (`_check_password_strength` in `schemas/account.py`). Every account has a password identity from registration, so step 2 finding none is treated as an unreachable-but-handled case (`NotFoundError`), not silently created.
+
+Deliberately does **not** revoke the account's existing access token(s) — matches the already-documented "no revocable sessions" gap under Tokens below. A stolen-but-not-yet-expired token stays valid even after a password reset; this is an accepted limitation, not something this endpoint tries to paper over.
 
 ## Registration
 
 `POST /auth/register` — unauthenticated.
 
 ```
-1. Validate phone (E.164) and password (8..72 chars)  -> 422
+1. Validate phone (E.164) and password (8..72 chars, upper+lower+digit+special)  -> 422
 2. Phone already registered?                          -> 409
 3. INSERT Account(phone, display_name)
 4. INSERT AuthIdentity(provider="password", subject=phone, secret_hash=bcrypt(password))
@@ -99,12 +125,13 @@ Registration and login write rows with a **null actor** — correct, since no on
 
 ## Authenticated Surface
 
-`POST /auth/register` and `POST /auth/login` are the **only** unauthenticated routes in the API. Everything else carries `Depends(get_current_account_id)`.
+`POST /auth/register`, `POST /auth/login` and `POST /auth/password/forgot` are the **only** unauthenticated routes in the API. Everything else carries `Depends(get_current_account_id)`.
 
 | Route | Auth |
 |---|---|
 | `POST /auth/register` | ❌ no caller exists yet |
 | `POST /auth/login` | ❌ no caller exists yet |
+| `POST /auth/password/forgot` | ❌ the whole point — caller can't log in |
 | `GET /auth/me` | ✅ |
 | `POST /auth/me/password` | ✅ + current password |
 | `GET /auth/me/quota` | ✅ |
@@ -118,7 +145,6 @@ Registration and login write rows with a **null actor** — correct, since no on
 
 | Item | Note |
 |---|---|
-| OTP login | `OtpProvider` + an `otp_challenges` table. Sets `verified_at`. |
 | Google / Apple SSO | Verify the upstream ID token, match on `provider_subject` = `sub`. No local secret. |
 | Biometric MFA | Cannot be a client-asserted flag — a patched client sets it to true. Requires an Android Keystore keypair with `setUserAuthenticationRequired(true)`, a server nonce, and signature verification, so the signature proves a biometric occurred on an enrolled device. |
 | Revocable sessions | Via a third-party auth service, not built in-house. |
