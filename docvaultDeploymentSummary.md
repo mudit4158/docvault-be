@@ -30,3 +30,25 @@ Phone → DNS lookup "doc-vault.duckdns.org" → DuckDNS says "34.27.248.178"
 Phone → https://34.27.248.178 → hits Caddy (has the valid cert, decrypts the request)
 Caddy → forwards the plain request internally → your FastAPI app container
 ```
+
+## Quick commands
+
+**Backend (local)**
+```
+python scripts/init_dev_db.py
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+**Android — check SHA-1/SHA-256 (must match Firebase console fingerprints)**
+```
+./gradlew signingReport
+```
+
+**Android — build the latest APK**
+```
+# Local/debug
+./gradlew clean :app:assembleDebug
+
+# Release (signed, production backend baked in)
+./gradlew assembleRelease -PdocvaultApiUrl=https://doc-vault.duckdns.org/
+```
