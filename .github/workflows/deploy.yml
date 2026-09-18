@@ -1,0 +1,45 @@
+name: Deploy to production
+
+# Every push to main is already gated by PR review — this just automates
+# the manual steps that used to follow a merge (package the repo, copy it
+# to the VM, rebuild). Nothing here touches secrets stored on the VM: the
+# real .env stays there untouched, only the code changes.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # git archive, not the .git folder itself — the VM never needs repo
+      # history, and this guarantees nothing gitignored (secrets, dev.db,
+      # .venv) can ever be included, same as every manual deploy so far.
+      - name: Package the repo
+        run: git archive HEAD -o /tmp/docvault-be.tar.gz --format=tar.gz
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy and deploy
+        run: |
+          scp -i ~/.ssh/deploy_key /tmp/docvault-be.tar.gz \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/docvault-be.tar.gz"
+          ssh -i ~/.ssh/deploy_key "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+            set -e
+            cd ~/docvault-be
+            cp .env /tmp/docvault.env.bak
+            find . -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
+            tar -xzf /tmp/docvault-be.tar.gz -C .
+            cp /tmp/docvault.env.bak .env
+            chmod 600 .env
+            rm -f /tmp/docvault-be.tar.gz /tmp/docvault.env.bak
+            docker compose up -d --build
+          '
