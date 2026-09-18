@@ -137,6 +137,23 @@ class AuthService:
         identity.secret_hash = hash_password(data.new_password)
         await self.db.flush()
 
+    async def check_phone_registered(self, phone: str) -> None:
+        """Raise 404 if no account exists for `phone`. Otherwise return.
+
+        ⚠️ PRIVACY: unauthenticated phone-number enumeration. Anyone can
+        probe any number and learn whether it has a DocVault account — a
+        real leak (this vault stores identity documents), accepted as a
+        deliberate product tradeoff: skip Firebase's SMS entirely for a
+        forgot-password attempt on an unregistered number, rather than
+        sending a code nobody using this app owns. `POST /auth/login` keeps
+        the opposite tradeoff (uniform failure) because a probe there costs
+        nothing extra and the enumeration served no product purpose — this
+        one does. Revisit if this stops seeming worth it.
+        """
+        account = await self.db.scalar(select(Account).where(Account.phone == phone))
+        if account is None:
+            raise NotFoundError("No account found for this phone number")
+
     async def lookup_by_phone(self, phone: str) -> AccountSummary:
         """Resolve a phone number to an account, for the invite flow.
 
