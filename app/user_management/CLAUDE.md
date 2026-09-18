@@ -58,6 +58,7 @@ All seven are `__audited__ = True`.
 | Quota enforcement (counter increment) | ✅ Built — `services/quota_service.py`, called by the upload path |
 | OTP login (Firebase Phone Auth) | ✅ Built — client-driven; backend only verifies the ID token |
 | Forgot password (OTP-verified reset) | ✅ Built — `POST /auth/password/forgot`, shares `verify_phone_and_resolve_account` + its `OtpAttempt` lockout with OTP login |
+| Forgot password: check-phone pre-check | ✅ Built — `POST /auth/password/forgot/check-phone`, skips sending an OTP for an unregistered number. Deliberate phone-enumeration tradeoff — see `AuthService.check_phone_registered` |
 | Google / Apple SSO | ⬜ Future scope — phase 3 |
 | Biometric MFA | ⬜ Future scope — phase 4 |
 | Revocable sessions | ⬜ Future scope — third-party auth service |
@@ -69,6 +70,7 @@ All seven are `__audited__ = True`.
 | `POST` | `/auth/register` | ❌ | — |
 | `POST` | `/auth/login` | ❌ | — |
 | `POST` | `/auth/password/forgot` | ❌ | Firebase-verified phone instead |
+| `POST` | `/auth/password/forgot/check-phone` | ❌ | — (deliberate enumeration tradeoff) |
 | `GET` | `/auth/me` | ✅ | — |
 | `POST` | `/auth/me/password` | ✅ | + current password |
 | `GET` | `/auth/me/quota` | ✅ | — |

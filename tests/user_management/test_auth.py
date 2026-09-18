@@ -514,6 +514,40 @@ async def test_forgot_password_and_otp_login_share_the_same_lockout(
     assert attempt.locked_until is not None
 
 
+# --- forgot password: check-phone (pre-check before sending an OTP) --------
+
+CHECK_PHONE = "/api/v1/auth/password/forgot/check-phone"
+
+
+async def test_check_phone_registered_succeeds_for_a_real_account(client: AsyncClient) -> None:
+    await client.post(REGISTER, json=VALID)
+    resp = await client.post(CHECK_PHONE, json={"phone": VALID["phone"]})
+    assert resp.status_code == 204
+
+
+async def test_check_phone_registered_404s_for_an_unregistered_number(
+    client: AsyncClient,
+) -> None:
+    resp = await client.post(CHECK_PHONE, json={"phone": "+919999999994"})
+    assert resp.status_code == 404
+
+
+async def test_check_phone_registered_does_not_require_authentication(
+    client: AsyncClient,
+) -> None:
+    await client.post(REGISTER, json=VALID)
+    resp = await client.post(CHECK_PHONE, json={"phone": VALID["phone"]})
+    assert resp.status_code == 204
+
+
+async def test_check_phone_registered_never_calls_firebase(client: AsyncClient) -> None:
+    """The entire point: no OTP is sent for this check — it's a plain DB lookup."""
+    with patch("app.user_management.services.firebase_verification.firebase_auth") as mock_fb:
+        resp = await client.post(CHECK_PHONE, json={"phone": "+919999999993"})
+        assert resp.status_code == 404
+        mock_fb.verify_id_token.assert_not_called()
+
+
 # --- audit -----------------------------------------------------------------
 
 

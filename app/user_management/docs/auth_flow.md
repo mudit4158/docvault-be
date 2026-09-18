@@ -61,6 +61,12 @@ No `current_password` field, unlike `POST /auth/me/password` — a verified Fire
 
 Deliberately does **not** revoke the account's existing access token(s) — matches the already-documented "no revocable sessions" gap under Tokens below. A stolen-but-not-yet-expired token stays valid even after a password reset; this is an accepted limitation, not something this endpoint tries to paper over.
 
+### Check-phone pre-check
+
+`POST /auth/password/forgot/check-phone` — unauthenticated. Body: `{ phone }`. 204 if an account exists for that phone, 404 otherwise. Never touches Firebase — it's a plain DB lookup, called by the client *before* triggering Firebase's SMS send, so an unregistered number never wastes an OTP.
+
+⚠️ **Deliberate phone-number-enumeration tradeoff.** Anyone, unauthenticated, can now probe any number and learn whether it has a DocVault account — the same category of leak `POST /auth/login`'s uniform failure exists specifically to prevent. Accepted here on purpose: unlike login, letting an OTP be sent for a number nobody registered has a real cost (an SMS charge) and no product benefit, so the enumeration tradeoff was judged worth it for this one endpoint. `POST /auth/login` and `POST /auth/password/forgot` itself keep their uniform-failure behavior — this pre-check is the one deliberate exception, not a precedent for loosening the others.
+
 ## Registration
 
 `POST /auth/register` — unauthenticated.
@@ -125,13 +131,14 @@ Registration and login write rows with a **null actor** — correct, since no on
 
 ## Authenticated Surface
 
-`POST /auth/register`, `POST /auth/login` and `POST /auth/password/forgot` are the **only** unauthenticated routes in the API. Everything else carries `Depends(get_current_account_id)`.
+`POST /auth/register`, `POST /auth/login`, `POST /auth/password/forgot` and `POST /auth/password/forgot/check-phone` are the **only** unauthenticated routes in the API. Everything else carries `Depends(get_current_account_id)`.
 
 | Route | Auth |
 |---|---|
 | `POST /auth/register` | ❌ no caller exists yet |
 | `POST /auth/login` | ❌ no caller exists yet |
 | `POST /auth/password/forgot` | ❌ the whole point — caller can't log in |
+| `POST /auth/password/forgot/check-phone` | ❌ deliberate enumeration tradeoff — see Forgot Password above |
 | `GET /auth/me` | ✅ |
 | `POST /auth/me/password` | ✅ + current password |
 | `GET /auth/me/quota` | ✅ |

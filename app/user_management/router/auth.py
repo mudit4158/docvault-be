@@ -10,6 +10,7 @@ from app.user_management.schemas.account import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
+    LookupRequest,
     QuotaResponse,
     RegisterRequest,
     TokenResponse,
@@ -18,10 +19,11 @@ from app.user_management.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# /auth/register, /auth/login and /auth/password/forgot are the ONLY
-# unauthenticated routes in the API — there is no caller to authenticate yet
-# on any of them (forgot-password can't require a token: the whole point is
-# the caller can't log in). Every other route in every module carries the
+# /auth/register, /auth/login, /auth/password/forgot and
+# /auth/password/forgot/check-phone are the ONLY unauthenticated routes in
+# the API — there is no caller to authenticate yet on any of them
+# (forgot-password can't require a token: the whole point is the caller
+# can't log in). Every other route in every module carries the
 # get_current_account_id dependency.
 
 
@@ -66,6 +68,18 @@ async def forgot_password(
     stands in for it.
     """
     await AuthService(db).reset_password(body)
+
+
+@router.post("/password/forgot/check-phone", status_code=status.HTTP_204_NO_CONTENT)
+async def check_phone_registered(
+    body: LookupRequest, db: AsyncSession = Depends(get_db)
+) -> None:
+    """404 if `phone` has no account — called before sending an OTP.
+
+    Deliberate, accepted phone-number-enumeration tradeoff. See
+    AuthService.check_phone_registered's docstring.
+    """
+    await AuthService(db).check_phone_registered(body.phone)
 
 
 @router.get("/me/quota", response_model=QuotaResponse)
